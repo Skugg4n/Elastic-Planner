@@ -1,788 +1,943 @@
-<!DOCTYPE html>
-<html lang="sv">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elastic Planner</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone@7.24.4/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { margin: 0; padding: 0; overflow: hidden; }
-        .line-clamp-2 {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        @keyframes slide-in-from-bottom-2 {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slide-in-from-bottom-4 {
-            from { opacity: 0; transform: translateY(16px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-in {
-            animation: slide-in-from-bottom-2 0.2s ease-out;
-        }
-        .slide-in-from-bottom-4 {
-            animation-name: slide-in-from-bottom-4;
-        }
-    </style>
-</head>
-<body>
-    <div id="root">
-        <div style="display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; background: #f4f4f5; color: #71717a;">
-            <div style="text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
-                <div style="font-size: 18px; font-weight: 600;">Laddar Elastic Planner...</div>
-                <div id="loading-status" style="font-size: 12px; margin-top: 8px; color: #a1a1aa;">Kontrollerar beroenden...</div>
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Check, Trash2, RotateCcw, Plus, Minus, Scissors, Edit3, ArrowDown, GripHorizontal, Upload, Save, X, MessageSquare, AlignLeft, AlertCircle, Zap, Settings, Star } from 'lucide-react';
+
+// --- KONFIGURATION ---
+
+const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
+const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
+const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
+
+// FÄRGPALETT
+const CATEGORIES = {
+  creative: { 
+    id: 'creative',
+    label: 'Bok', 
+    bg: 'bg-zinc-900', 
+    text: 'text-white',
+    border: 'border-zinc-900',
+    doneStyle: 'bg-zinc-100 text-zinc-300 border-zinc-200' 
+  },
+  job: { 
+    id: 'job',
+    label: 'Jobb', 
+    bg: 'bg-zinc-200', 
+    text: 'text-zinc-900',
+    border: 'border-zinc-300',
+    doneStyle: 'bg-zinc-50 text-zinc-300 border-zinc-100' 
+  },
+  training: { 
+    id: 'training',
+    label: 'Fys', 
+    bg: 'bg-red-600', 
+    text: 'text-white',
+    border: 'border-red-700',
+    doneStyle: 'bg-red-50 text-red-200 border-red-100' 
+  },
+  life: { 
+    id: 'life',
+    label: 'Livet', 
+    bg: 'bg-emerald-500', 
+    text: 'text-white',
+    border: 'border-emerald-600',
+    doneStyle: 'bg-emerald-50 text-emerald-200 border-emerald-100' 
+  },
+};
+
+// --- DATA LOGIK ---
+
+const generateStandardWeek = (weekId) => {
+  const blocks = [];
+  let idCounter = 0;
+  const createId = () => `${weekId}-${Date.now()}-${idCounter++}`;
+
+  const add = (day, start, duration, type, label, status = 'planned', description = '') => {
+    blocks.push({ 
+      id: createId(), 
+      day, start, duration, type, label, status, description 
+    });
+  };
+
+  // Standardplanering
+  [0, 2, 4].forEach(d => {
+    add(d, 8, 3, 'creative', 'Bok & Bild'); 
+    add(d, 11.5, 0.5, 'life', 'Lunch'); 
+    add(d, 12, 2, 'job', 'Jobb');
+    add(d, 14, 2, 'job', 'Jobb');
+    if(d !== 4) add(d, 16, 1, 'job', 'Jobb');
+    if(d === 2) add(d, 20, 2, 'job', 'Kvällsbuffer', 'planned'); 
+  });
+
+  [1, 3].forEach(d => {
+    add(d, 8, 2, 'creative', 'Bok & Bild');
+    add(d, 10, 1, 'training', d === 1 ? 'Styrka' : 'Kondition');
+    add(d, 11.5, 0.5, 'life', 'Lunch');
+    add(d, 12, 2, 'job', 'Jobb');
+    add(d, 14, 2, 'job', 'Jobb');
+    add(d, 16, 1, 'job', 'Jobb');
+    add(d, 21, 1, 'training', 'Backup: Cykel', 'inactive');
+  });
+
+  add(5, 10, 2, 'training', 'Simhallen');
+
+  return { calendar: blocks, bank: [], logs: {} };
+};
+
+export default function ElasticPlanner() {
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(1);
+  const [weeksData, setWeeksData] = useState({ 1: generateStandardWeek(1) });
+  
+  // Interaction State
+  const [draggedBlock, setDraggedBlock] = useState(null);
+  const [sourceContainer, setSourceContainer] = useState(null);
+  const [selectedBlockIds, setSelectedBlockIds] = useState([]); 
+  const [editingLabelId, setEditingLabelId] = useState(null);
+  const [addModal, setAddModal] = useState(null); 
+  const [noteModal, setNoteModal] = useState(null); 
+  const [logModal, setLogModal] = useState(null); 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [microMenuOpen, setMicroMenuOpen] = useState(false); 
+  
+  // Presets för Micro-träning
+  const [presets, setPresets] = useState([
+      { label: 'Hantlar (Set)', category: 'training', icon: 'zap' },
+      { label: 'Abroller (Set)', category: 'training', icon: 'zap' },
+      { label: 'Stretch (Kort)', category: 'life', icon: 'star' },
+      { label: 'Promenad', category: 'life', icon: 'star' }
+  ]);
+
+  const fileInputRef = useRef(null);
+
+  // Resize State
+  const [resizingBlockId, setResizingBlockId] = useState(null);
+  const [resizeStartY, setResizeStartY] = useState(null);
+  const [resizeStartDuration, setResizeStartDuration] = useState(null);
+
+  const [dropIndicator, setDropIndicator] = useState(null); 
+
+  const currentData = weeksData[currentWeekIndex] || { calendar: [], bank: [], logs: {} };
+  const { calendar, bank, logs } = currentData;
+  const todayIndex = (new Date().getDay() + 6) % 7; 
+
+  // Click outside listener
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.block-interactive') && !e.target.closest('.action-menu') && 
+          !e.target.closest('.add-modal') && !e.target.closest('.bulk-menu') && 
+          !e.target.closest('.note-modal') && !e.target.closest('.log-modal') &&
+          !e.target.closest('.settings-modal') && !e.target.closest('.micro-menu')) {
+        setSelectedBlockIds([]);
+        setEditingLabelId(null);
+        setAddModal(null);
+        setNoteModal(null);
+        setLogModal(null);
+        setSettingsOpen(false);
+        setMicroMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Resize Global Listeners (Samma som förut)
+  useEffect(() => {
+      const handleMouseMove = (e) => {
+          if (!resizingBlockId) return;
+          const deltaY = e.clientY - resizeStartY;
+          const pixelsPerHour = 16 * HOUR_HEIGHT; 
+          const deltaHours = deltaY / pixelsPerHour;
+          const rawNewDuration = resizeStartDuration + deltaHours;
+          const snappedDuration = Math.max(0.5, Math.round(rawNewDuration * 2) / 2);
+          const updatedCalendar = calendar.map(b => b.id === resizingBlockId ? { ...b, duration: snappedDuration } : b);
+          updateCurrentWeek(updatedCalendar, bank, logs);
+      };
+
+      const handleMouseUp = () => {
+          if (resizingBlockId) {
+              const block = calendar.find(b => b.id === resizingBlockId);
+              if (block) {
+                 const newCalendar = resolveCollisions(calendar, block);
+                 updateCurrentWeek(newCalendar, bank, logs);
+              }
+              setResizingBlockId(null);
+              setResizeStartY(null);
+              setResizeStartDuration(null);
+          }
+      };
+
+      if (resizingBlockId) {
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+      }
+      return () => {
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', handleMouseUp);
+      };
+  }, [resizingBlockId, resizeStartY, resizeStartDuration, calendar, bank, logs]);
+
+  useEffect(() => {
+    if (!weeksData[currentWeekIndex]) {
+      setWeeksData(prev => ({ ...prev, [currentWeekIndex]: generateStandardWeek(currentWeekIndex) }));
+    }
+  }, [currentWeekIndex, weeksData]);
+
+  const updateCurrentWeek = (newCalendar, newBank, newLogs) => {
+    setWeeksData(prev => ({ 
+        ...prev, 
+        [currentWeekIndex]: { 
+            calendar: newCalendar, 
+            bank: newBank,
+            logs: newLogs || prev[currentWeekIndex]?.logs || {} 
+        } 
+    }));
+  };
+
+  const resolveCollisions = (allBlocks, changedBlock) => {
+      let blocks = [...allBlocks];
+      let hasChanges = true;
+      const MAX_LOOPS = 100; 
+      let loops = 0;
+
+      while(hasChanges && loops < MAX_LOOPS) {
+          hasChanges = false;
+          loops++;
+          blocks.sort((a,b) => a.start - b.start);
+          for (let i = 0; i < blocks.length; i++) {
+              const b1 = blocks[i];
+              for (let j = i + 1; j < blocks.length; j++) {
+                  const b2 = blocks[j];
+                  if (b1.day === b2.day) {
+                      const b1End = b1.start + b1.duration;
+                      if (b2.start < b1End) {
+                          b2.start = b1End;
+                          hasChanges = true;
+                      }
+                  }
+              }
+          }
+      }
+      return blocks;
+  };
+
+  // --- LOGIC: LOGS ---
+  const addToLog = (day, text, specificTime = null) => {
+      const currentLogs = logs[day] || [];
+      let timestamp;
+      if (specificTime) {
+          timestamp = specificTime;
+      } else {
+          const now = new Date();
+          const currentHour = now.getHours() + now.getMinutes()/60;
+          timestamp = (day === todayIndex) ? currentHour : 12.0; 
+      }
+      timestamp = Math.max(7, Math.min(23.9, timestamp));
+
+      const newEntry = { 
+          id: Date.now(), 
+          text, 
+          timestamp,
+          type: text.toLowerCase().includes('hantlar') || text.toLowerCase().includes('abroller') ? 'zap' : 'star'
+      };
+      
+      const newLogs = { ...logs, [day]: [...currentLogs, newEntry] };
+      updateCurrentWeek(calendar, bank, newLogs);
+  };
+
+  const removeFromLog = (day, entryId) => {
+      const currentLogs = logs[day] || [];
+      const newDayLogs = currentLogs.filter(e => e.id !== entryId);
+      const newLogs = { ...logs, [day]: newDayLogs };
+      updateCurrentWeek(calendar, bank, newLogs);
+  };
+
+  // --- ACTIONS ---
+
+  const handleResizeStart = (e, block) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setResizingBlockId(block.id);
+      setResizeStartY(e.clientY);
+      setResizeStartDuration(block.duration);
+      setSelectedBlockIds([]); 
+  };
+
+  const handleBlockClick = (e, blockId) => {
+      e.stopPropagation();
+      if (e.shiftKey) {
+          setSelectedBlockIds(prev => prev.includes(blockId) ? prev.filter(id => id !== blockId) : [...prev, blockId]);
+      } else {
+          setSelectedBlockIds(prev => prev.length === 1 && prev[0] === blockId ? [] : [blockId]);
+      }
+      setEditingLabelId(null);
+  };
+
+  const splitBlock = (block) => {
+      if (block.duration < 1) return;
+      const part1Duration = block.duration / 2;
+      const part1 = { ...block, duration: part1Duration };
+      const part2 = { ...block, id: `${block.id}-split`, start: block.start + part1Duration, duration: part1Duration };
+
+      if (calendar.find(b => b.id === block.id)) {
+          const newCalendar = calendar.filter(b => b.id !== block.id);
+          newCalendar.push(part1, part2);
+          updateCurrentWeek(resolveCollisions(newCalendar, part1), bank, logs);
+      } else {
+          const newBank = bank.filter(b => b.id !== block.id);
+          newBank.push(part1, part2);
+          updateCurrentWeek(calendar, newBank, logs);
+      }
+      setSelectedBlockIds([]);
+  };
+
+  const addNewBlock = (type) => {
+      if(!addModal) return;
+      const { day, hour } = addModal;
+      const duration = 1;
+      const newBlock = { id: `new-${Date.now()}`, day, start: hour, duration, type, label: CATEGORIES[type].label, status: 'planned', description: '' };
+      
+      const newCalendar = [...calendar, newBlock];
+      updateCurrentWeek(resolveCollisions(newCalendar, newBlock), bank, logs);
+      setAddModal(null);
+  };
+
+  const handleMicroAdd = (label) => {
+      addToLog(todayIndex, label);
+      setMicroMenuOpen(false);
+  };
+
+  const updateDescription = (blockId, text) => {
+      const update = (list) => list.map(b => b.id === blockId ? { ...b, description: text } : b);
+      if (calendar.find(b => b.id === blockId)) updateCurrentWeek(update(calendar), bank, logs);
+      else updateCurrentWeek(calendar, update(bank), logs);
+      setNoteModal(null);
+  };
+
+  const toggleStatus = (blockId) => {
+    const toggle = (list) => list.map(b => b.id === blockId ? { ...b, status: b.status === 'done' ? 'planned' : (b.status === 'inactive' ? 'planned' : 'done') } : b);
+    if (calendar.find(b => b.id === blockId)) updateCurrentWeek(toggle(calendar), bank, logs);
+    else updateCurrentWeek(calendar, toggle(bank), logs);
+    if(selectedBlockIds.length <= 1) setSelectedBlockIds([]);
+  };
+
+  const deleteBlock = (blockId) => {
+      if (calendar.find(b => b.id === blockId)) {
+          updateCurrentWeek(calendar.filter(b => b.id !== blockId), bank, logs);
+      } else {
+          updateCurrentWeek(calendar, bank.filter(b => b.id !== blockId), logs);
+      }
+      setSelectedBlockIds([]);
+  };
+
+  const handleBulkDelete = () => {
+      const ids = new Set(selectedBlockIds);
+      const newCalendar = calendar.filter(b => !ids.has(b.id));
+      const newBank = bank.filter(b => !ids.has(b.id));
+      updateCurrentWeek(newCalendar, newBank, logs);
+      setSelectedBlockIds([]);
+  };
+
+  const handleBulkToggle = () => {
+      const ids = new Set(selectedBlockIds);
+      const toggle = (list) => list.map(b => ids.has(b.id) ? { ...b, status: 'done' } : b);
+      updateCurrentWeek(toggle(calendar), toggle(bank), logs);
+      setSelectedBlockIds([]);
+  };
+
+  // --- DRAG & DROP ---
+  const handleDragStart = (e, block, source) => {
+    setDraggedBlock(block);
+    setSourceContainer(source);
+    setSelectedBlockIds([]);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, dayIndex, hour) => {
+    e.preventDefault();
+    if (!draggedBlock) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const isBottomHalf = offsetY > (rect.height / 2);
+    const targetStart = isBottomHalf ? hour + 0.5 : hour;
+
+    const hoverBlock = calendar.find(b => b.day === dayIndex && b.start <= targetStart && (b.start + b.duration) > targetStart);
+    
+    if (hoverBlock && hoverBlock.type === draggedBlock.type && hoverBlock.id !== draggedBlock.id) {
+        setDropIndicator({ day: dayIndex, hour: hoverBlock.start, type: 'merge', targetBlockId: hoverBlock.id });
+    } else {
+        setDropIndicator({ day: dayIndex, hour: targetStart, type: 'insert' });
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (!draggedBlock || !dropIndicator) return;
+
+    let newCalendar = sourceContainer === 'calendar' ? calendar.filter(b => b.id !== draggedBlock.id) : [...calendar];
+    let newBank = sourceContainer === 'bank' ? bank.filter(b => b.id !== draggedBlock.id) : [...bank];
+
+    if (dropIndicator.type === 'merge') {
+        const target = newCalendar.find(b => b.id === dropIndicator.targetBlockId);
+        if (target) target.duration += draggedBlock.duration;
+        newCalendar = resolveCollisions(newCalendar, target);
+    } else {
+        const newBlock = { ...draggedBlock, day: dropIndicator.day, start: dropIndicator.hour };
+        newCalendar.push(newBlock);
+        newCalendar = resolveCollisions(newCalendar, newBlock);
+    }
+
+    updateCurrentWeek(newCalendar, newBank, logs);
+    setDraggedBlock(null);
+    setDropIndicator(null);
+  };
+
+  // Import/Export
+  const handleExport = () => {
+      const dataStr = JSON.stringify(weeksData, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `planering_backup.json`;
+      document.body.appendChild(link);
+      link.click(); document.body.removeChild(link);
+  };
+  const handleImport = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => { try { setWeeksData(JSON.parse(e.target.result)); alert("Laddat!"); } catch { alert("Fel format!"); } };
+      reader.readAsText(file);
+  };
+
+  // Stats
+  const doneBok = calendar.filter(b => b.type === 'creative' && b.status === 'done').reduce((acc,b) => acc + b.duration, 0);
+  const totalBok = [...calendar, ...bank].filter(b => b.type === 'creative').reduce((acc,b) => acc + b.duration, 0);
+  const doneJob = calendar.filter(b => b.type === 'job' && b.status === 'done').reduce((acc,b) => acc + b.duration, 0);
+  const totalJob = [...calendar, ...bank].filter(b => b.type === 'job').reduce((acc,b) => acc + b.duration, 0);
+
+  return (
+    <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
+      
+      {/* HEADER */}
+      <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-50">
+        <div className="px-4 py-2 flex justify-between items-center">
+             <div className="flex items-center gap-4">
+                 <div className="flex items-center bg-zinc-100 rounded-lg p-1">
+                    <button onClick={() => setCurrentWeekIndex(Math.max(1, currentWeekIndex - 1))} className="hover:bg-white rounded p-1"><ChevronLeft size={16}/></button>
+                    <span className="text-sm font-bold w-20 text-center">V.{currentWeekIndex}</span>
+                    <button onClick={() => setCurrentWeekIndex(currentWeekIndex + 1)} className="hover:bg-white rounded p-1"><ChevronRight size={16}/></button>
+                </div>
+                <div className="h-6 w-px bg-zinc-200"></div>
+                <div className="flex gap-1">
+                    <button onClick={handleExport} className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 px-2 py-1 hover:bg-zinc-100 rounded"><Save size={14} /> Spara</button>
+                    <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 px-2 py-1 hover:bg-zinc-100 rounded"><Upload size={14} /> Ladda</button>
+                    <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
+                </div>
+             </div>
+            <div className="flex gap-6">
+                <StatPill label="Bok" current={doneBok} total={totalBok} unit="h" />
+                <StatPill label="Jobb" current={doneJob} total={totalJob} unit="h" target={24} warnBelowTarget={true} />
             </div>
         </div>
-    </div>
+      </header>
 
-    <script>
-        // Debug script loading
-        console.log('Starting Elastic Planner...');
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            console.error('Error: ', msg, url, lineNo, columnNo, error);
-            document.getElementById('loading-status').textContent = 'Fel: ' + msg;
-            document.getElementById('loading-status').style.color = '#ef4444';
-            return false;
-        };
-
-        // Check if dependencies loaded
-        setTimeout(function() {
-            const status = document.getElementById('loading-status');
-            if (typeof React === 'undefined') {
-                status.textContent = 'Fel: React kunde inte laddas';
-                status.style.color = '#ef4444';
-                console.error('React not loaded');
-            } else if (typeof ReactDOM === 'undefined') {
-                status.textContent = 'Fel: ReactDOM kunde inte laddas';
-                status.style.color = '#ef4444';
-                console.error('ReactDOM not loaded');
-            } else if (typeof Babel === 'undefined') {
-                status.textContent = 'Fel: Babel kunde inte laddas';
-                status.style.color = '#ef4444';
-                console.error('Babel not loaded');
-            } else if (typeof LucideReact === 'undefined') {
-                status.textContent = 'Fel: Lucide-react kunde inte laddas';
-                status.style.color = '#ef4444';
-                console.error('LucideReact not loaded');
-            } else {
-                status.textContent = 'Startar applikation...';
-                status.style.color = '#22c55e';
-                console.log('All dependencies loaded successfully');
-                console.log('Babel version:', Babel.version);
-            }
-        }, 2000);
-
-        // Fallback if React app doesn't render after 5 seconds
-        setTimeout(function() {
-            const root = document.getElementById('root');
-            if (root && root.children.length === 1 && root.children[0].tagName === 'DIV') {
-                // Loading screen still showing - React app didn't render
-                const status = document.getElementById('loading-status');
-                if (status) {
-                    status.textContent = 'Varning: React-appen renderades inte. Kontrollera konsolen för fel.';
-                    status.style.color = '#ef4444';
-                    console.error('React app failed to render. Check if Babel is transforming the script.');
-                    console.log('Try opening browser console (F12) to see detailed errors');
-                }
-            }
-        }, 5000);
-    </script>
-
-    <script type="text/babel" data-type="module" data-presets="react">
-        const { useState, useEffect, useRef } = React;
-        const {
-            ChevronLeft, ChevronRight, Check, Trash2, RotateCcw, Plus, Minus,
-            Scissors, Edit3, ArrowDown, GripHorizontal, Upload, Save, X,
-            MessageSquare, AlignLeft, AlertCircle, Zap, Settings, Star,
-            LogOut, Inbox, Loader
-        } = LucideReact;
-
-        // --- KONFIGURATION ---
-        const APP_VERSION = '1.0.2';
-        const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
-        const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
-        const HOUR_HEIGHT = 4; // rem
-
-        // FÄRGPALETT
-        const CATEGORIES = {
-            creative: { id: 'creative', label: 'Bok', bg: 'bg-zinc-900', text: 'text-white', border: 'border-zinc-900', doneStyle: 'bg-zinc-100 text-zinc-300 border-zinc-200' },
-            job: { id: 'job', label: 'Jobb', bg: 'bg-zinc-200', text: 'text-zinc-900', border: 'border-zinc-300', doneStyle: 'bg-zinc-50 text-zinc-300 border-zinc-100' },
-            training: { id: 'training', label: 'Fys', bg: 'bg-red-600', text: 'text-white', border: 'border-red-700', doneStyle: 'bg-red-50 text-red-200 border-red-100' },
-            life: { id: 'life', label: 'Livet', bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600', doneStyle: 'bg-emerald-50 text-emerald-200 border-emerald-100' },
-            todo: { id: 'todo', label: 'Inbox', bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', doneStyle: 'bg-zinc-50 text-zinc-300' }
-        };
-
-        // --- STANDARD DATA ---
-        const generateStandardWeek = (weekId) => {
-            const blocks = [];
-            let idCounter = 0;
-            const createId = () => `${weekId}-${Date.now()}-${idCounter++}`;
-            const add = (day, start, duration, type, label, status = 'planned', description = '') => {
-                blocks.push({ id: createId(), day, start, duration, type, label, status, description });
-            };
-
-            // Grundschema
-            [0, 2, 4].forEach(d => {
-                add(d, 8, 3, 'creative', 'Bok & Bild');
-                add(d, 11.5, 0.5, 'life', 'Lunch');
-                add(d, 12, 2, 'job', 'Jobb');
-                add(d, 14, 2, 'job', 'Jobb');
-                if(d !== 4) add(d, 16, 1, 'job', 'Jobb');
-                if(d === 2) add(d, 20, 2, 'job', 'Kvällsbuffer', 'planned');
-            });
-            [1, 3].forEach(d => {
-                add(d, 8, 2, 'creative', 'Bok & Bild');
-                add(d, 10, 1, 'training', d === 1 ? 'Styrka' : 'Kondition');
-                add(d, 11.5, 0.5, 'life', 'Lunch');
-                add(d, 12, 2, 'job', 'Jobb');
-                add(d, 14, 2, 'job', 'Jobb');
-                add(d, 16, 1, 'job', 'Jobb');
-                add(d, 21, 1, 'training', 'Backup: Cykel', 'inactive');
-            });
-            add(5, 10, 2, 'training', 'Simhallen');
-
-            // Simulerad Inbox-data
-            const inbox = [
-                { id: 'todo-1', type: 'todo', label: 'Skriv klart Kap 3', duration: 2, status: 'planned' },
-                { id: 'todo-2', type: 'todo', label: 'Fakturera', duration: 0.5, status: 'planned' },
-                { id: 'todo-3', type: 'todo', label: 'Maila förlaget', duration: 0.5, status: 'planned' },
-            ];
-
-            return { calendar: blocks, bank: [], logs: {}, inbox: inbox };
-        };
-
-        function ElasticPlanner() {
-            const [currentWeekIndex, setCurrentWeekIndex] = useState(1);
-            const [weekData, setWeekData] = useState(null);
-
-            // Interaction
-            const [draggedBlock, setDraggedBlock] = useState(null);
-            const [sourceContainer, setSourceContainer] = useState(null);
-            const [selectedBlockIds, setSelectedBlockIds] = useState([]);
-            const [editingLabelId, setEditingLabelId] = useState(null);
-            const [addModal, setAddModal] = useState(null);
-            const [noteModal, setNoteModal] = useState(null);
-            const [logModal, setLogModal] = useState(null);
-            const [settingsOpen, setSettingsOpen] = useState(false);
-            const [microMenuOpen, setMicroMenuOpen] = useState(false);
-            const [inboxOpen, setInboxOpen] = useState(false);
-
-            const [presets, setPresets] = useState([
-                { label: 'Hantlar (Set)', category: 'training', icon: 'zap' },
-                { label: 'Abroller (Set)', category: 'training', icon: 'zap' },
-                { label: 'Stretch (Kort)', category: 'life', icon: 'star' },
-                { label: 'Promenad', category: 'life', icon: 'star' }
-            ]);
-
-            const [resizingBlockId, setResizingBlockId] = useState(null);
-            const [resizeStartY, setResizeStartY] = useState(null);
-            const [resizeStartDuration, setResizeStartDuration] = useState(null);
-            const [dropIndicator, setDropIndicator] = useState(null);
-
-            const todayIndex = (new Date().getDay() + 6) % 7;
-            const fileInputRef = useRef(null);
-
-            // --- LOCAL STORAGE SYNC ---
-            useEffect(() => {
-                const savedData = localStorage.getItem(`planner-week-${currentWeekIndex}`);
-                if (savedData) {
-                    try {
-                        setWeekData(JSON.parse(savedData));
-                    } catch (e) {
-                        console.error("Kunde inte ladda data", e);
-                        setWeekData(generateStandardWeek(currentWeekIndex));
-                    }
-                } else {
-                    setWeekData(generateStandardWeek(currentWeekIndex));
-                }
-            }, [currentWeekIndex]);
-
-            const saveWeekData = (newData) => {
-                setWeekData(newData);
-                localStorage.setItem(`planner-week-${currentWeekIndex}`, JSON.stringify(newData));
-            };
-
-            // --- CLICK OUTSIDE ---
-            useEffect(() => {
-                const handleClickOutside = (e) => {
-                    if (!e.target.closest('.block-interactive') && !e.target.closest('.action-menu') &&
-                        !e.target.closest('.add-modal') && !e.target.closest('.bulk-menu') &&
-                        !e.target.closest('.note-modal') && !e.target.closest('.log-modal') &&
-                        !e.target.closest('.settings-modal') && !e.target.closest('.micro-menu') &&
-                        !e.target.closest('.inbox-panel')) {
-                        setSelectedBlockIds([]);
-                        setEditingLabelId(null);
-                        setAddModal(null);
-                        setNoteModal(null);
-                        setLogModal(null);
-                        setSettingsOpen(false);
-                        setMicroMenuOpen(false);
-                        setInboxOpen(false);
-                    }
-                };
-                document.addEventListener('mousedown', handleClickOutside);
-                return () => document.removeEventListener('mousedown', handleClickOutside);
-            }, []);
-
-            if (!weekData) return <div className="h-screen flex items-center justify-center bg-zinc-50 text-zinc-400">Laddar...</div>;
-
-            const { calendar, bank, logs, inbox } = weekData;
-
-            // --- RESIZE LOGIC ---
-            const handleResizeStart = (e, block) => {
-                e.stopPropagation(); e.preventDefault();
-                setResizingBlockId(block.id);
-                setResizeStartY(e.clientY);
-                setResizeStartDuration(block.duration);
-                setSelectedBlockIds([]);
-            };
-
-            useEffect(() => {
-                const handleMouseMove = (e) => {
-                    if (!resizingBlockId) return;
-                    const deltaY = e.clientY - resizeStartY;
-                    const pixelsPerHour = 16 * HOUR_HEIGHT;
-                    const rawNewDuration = resizeStartDuration + (deltaY / pixelsPerHour);
-                    const snappedDuration = Math.max(0.5, Math.round(rawNewDuration * 2) / 2);
-
-                    // Only update local view state for smoothness
-                    const updatedCalendar = calendar.map(b => b.id === resizingBlockId ? { ...b, duration: snappedDuration } : b);
-                    setWeekData(prev => ({...prev, calendar: updatedCalendar}));
-                };
-
-                const handleMouseUp = () => {
-                    if (resizingBlockId) {
-                        const block = calendar.find(b => b.id === resizingBlockId);
-                        if (block) {
-                            const newCalendar = resolveCollisions(calendar, block);
-                            saveWeekData({ ...weekData, calendar: newCalendar });
-                        }
-                        setResizingBlockId(null);
-                    }
-                };
-
-                if (resizingBlockId) {
-                    document.addEventListener('mousemove', handleMouseMove);
-                    document.addEventListener('mouseup', handleMouseUp);
-                }
-                return () => {
-                    document.removeEventListener('mousemove', handleMouseMove);
-                    document.removeEventListener('mouseup', handleMouseUp);
-                };
-            }, [resizingBlockId, resizeStartY, resizeStartDuration]);
-
-            const resolveCollisions = (allBlocks, changedBlock) => {
-                let blocks = [...allBlocks];
-                let hasChanges = true;
-                const MAX_LOOPS = 100; let loops = 0;
-                while(hasChanges && loops < MAX_LOOPS) {
-                    hasChanges = false; loops++;
-                    blocks.sort((a,b) => a.start - b.start);
-                    for (let i = 0; i < blocks.length; i++) {
-                        const b1 = blocks[i];
-                        for (let j = i + 1; j < blocks.length; j++) {
-                            const b2 = blocks[j];
-                            if (b1.day === b2.day) {
-                                const b1End = b1.start + b1.duration;
-                                if (b2.start < b1End) {
-                                    b2.start = b1End;
-                                    hasChanges = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                return blocks;
-            };
-
-            // --- ACTIONS ---
-            const handleBlockClick = (e, blockId) => {
-                e.stopPropagation();
-                if (e.shiftKey) {
-                    setSelectedBlockIds(prev => prev.includes(blockId) ? prev.filter(id => id !== blockId) : [...prev, blockId]);
-                } else {
-                    setSelectedBlockIds(prev => prev.length === 1 && prev[0] === blockId ? [] : [blockId]);
-                }
-                setEditingLabelId(null);
-            };
-
-            const splitBlock = (block) => {
-                if (block.duration < 1) return;
-                const part1Duration = block.duration / 2;
-                const part1 = { ...block, duration: part1Duration };
-                const part2 = { ...block, id: `${block.id}-split`, start: block.start + part1Duration, duration: part1Duration };
-                if (calendar.find(b => b.id === block.id)) {
-                    const newCalendar = calendar.filter(b => b.id !== block.id);
-                    newCalendar.push(part1, part2);
-                    saveWeekData({ ...weekData, calendar: resolveCollisions(newCalendar, part1) });
-                } else {
-                    const newBank = bank.filter(b => b.id !== block.id);
-                    newBank.push(part1, part2);
-                    saveWeekData({ ...weekData, bank: newBank });
-                }
-                setSelectedBlockIds([]);
-            };
-
-            const addNewBlock = (type) => {
-                if(!addModal) return;
-                const { day, hour } = addModal;
-                const newBlock = { id: `new-${Date.now()}`, day, start: hour, duration: 1, type, label: CATEGORIES[type].label, status: 'planned', description: '' };
-                const newCalendar = [...calendar, newBlock];
-                saveWeekData({ ...weekData, calendar: resolveCollisions(newCalendar, newBlock) });
-                setAddModal(null);
-            };
-
-            const addToLog = (day, text) => {
-                const currentLogs = logs[day] || [];
-                const timestamp = (day === todayIndex) ? (new Date().getHours() + new Date().getMinutes()/60) : 12.0;
-                const newEntry = {
-                    id: Date.now(), text, timestamp: Math.max(7, Math.min(23.9, timestamp)),
-                    type: text.toLowerCase().includes('hantlar') || text.toLowerCase().includes('abroller') ? 'zap' : 'star'
-                };
-                saveWeekData({ ...weekData, logs: { ...logs, [day]: [...currentLogs, newEntry] } });
-            };
-
-            const removeFromLog = (day, entryId) => {
-                saveWeekData({ ...weekData, logs: { ...logs, [day]: (logs[day] || []).filter(e => e.id !== entryId) } });
-            };
-
-            const handleMicroAdd = (label) => { addToLog(todayIndex, label); setMicroMenuOpen(false); };
-
-            const updateDescription = (blockId, text) => {
-                const update = (list) => list.map(b => b.id === blockId ? { ...b, description: text } : b);
-                if (calendar.find(b => b.id === blockId)) saveWeekData({ ...weekData, calendar: update(calendar) });
-                else saveWeekData({ ...weekData, bank: update(bank) });
-                setNoteModal(null);
-            };
-
-            const toggleStatus = (blockId) => {
-                const toggle = (list) => list.map(b => b.id === blockId ? { ...b, status: b.status === 'done' ? 'planned' : (b.status === 'inactive' ? 'planned' : 'done') } : b);
-                if (calendar.find(b => b.id === blockId)) saveWeekData({ ...weekData, calendar: toggle(calendar) });
-                else saveWeekData({ ...weekData, bank: toggle(bank) });
-                if(selectedBlockIds.length <= 1) setSelectedBlockIds([]);
-            };
-
-            const deleteBlock = (blockId) => {
-                if (calendar.find(b => b.id === blockId)) saveWeekData({ ...weekData, calendar: calendar.filter(b => b.id !== blockId) });
-                else saveWeekData({ ...weekData, bank: bank.filter(b => b.id !== blockId) });
-                setSelectedBlockIds([]);
-            };
-
-            // Inbox Add
-            const addToInbox = (text) => {
-                const newTodo = { id: `todo-${Date.now()}`, type: 'todo', label: text, duration: 1, status: 'planned' };
-                saveWeekData({ ...weekData, inbox: [...(inbox || []), newTodo] });
-            };
-
-            const handleBulkDelete = () => {
-                const ids = new Set(selectedBlockIds);
-                const newCalendar = calendar.filter(b => !ids.has(b.id));
-                const newBank = bank.filter(b => !ids.has(b.id));
-                saveWeekData({ ...weekData, calendar: newCalendar, bank: newBank });
-                setSelectedBlockIds([]);
-            };
-
-            const handleBulkToggle = () => {
-                const ids = new Set(selectedBlockIds);
-                const toggle = (list) => list.map(b => ids.has(b.id) ? { ...b, status: 'done' } : b);
-                saveWeekData({ ...weekData, calendar: toggle(calendar), bank: toggle(bank) });
-                setSelectedBlockIds([]);
-            };
-
-            // --- DRAG HANDLERS ---
-            const handleDragStart = (e, block, source) => {
-                setDraggedBlock(block);
-                setSourceContainer(source);
-                setSelectedBlockIds([]);
-                e.dataTransfer.effectAllowed = 'move';
-            };
-
-            const handleDragOver = (e, dayIndex, hour) => {
-                e.preventDefault();
-                if (!draggedBlock) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                const offsetY = e.clientY - rect.top;
-                const isBottomHalf = offsetY > (rect.height / 2);
-                const targetStart = isBottomHalf ? hour + 0.5 : hour;
-                const hoverBlock = calendar.find(b => b.day === dayIndex && b.start <= targetStart && (b.start + b.duration) > targetStart);
-                if (hoverBlock && hoverBlock.type === draggedBlock.type && hoverBlock.id !== draggedBlock.id) {
-                    setDropIndicator({ day: dayIndex, hour: hoverBlock.start, type: 'merge', targetBlockId: hoverBlock.id });
-                } else {
-                    setDropIndicator({ day: dayIndex, hour: targetStart, type: 'insert' });
-                }
-            };
-
-            const handleDrop = (e) => {
-                e.preventDefault();
-                if (!draggedBlock || !dropIndicator) return;
-
-                let newCalendar = sourceContainer === 'calendar' ? calendar.filter(b => b.id !== draggedBlock.id) : [...calendar];
-                let newBank = sourceContainer === 'bank' ? bank.filter(b => b.id !== draggedBlock.id) : [...bank];
-                let newInbox = sourceContainer === 'inbox' ? (inbox || []).filter(b => b.id !== draggedBlock.id) : [...(inbox || [])];
-
-                if (dropIndicator.type === 'merge') {
-                    const target = newCalendar.find(b => b.id === dropIndicator.targetBlockId);
-                    if (target) target.duration += draggedBlock.duration;
-                    newCalendar = resolveCollisions(newCalendar, target);
-                } else {
-                    const newBlock = { ...draggedBlock, day: dropIndicator.day, start: dropIndicator.hour };
-                    newCalendar.push(newBlock);
-                    newCalendar = resolveCollisions(newCalendar, newBlock);
-                }
-
-                saveWeekData({ ...weekData, calendar: newCalendar, bank: newBank, inbox: newInbox });
-                setDraggedBlock(null);
-                setDropIndicator(null);
-            };
-
-            const handleDropOnBank = (e) => {
-                e.preventDefault();
-                if (!draggedBlock) return;
-                if (sourceContainer === 'bank') return;
-
-                let newCalendar = sourceContainer === 'calendar' ? calendar.filter(b => b.id !== draggedBlock.id) : [...calendar];
-                let newInbox = sourceContainer === 'inbox' ? (inbox || []).filter(b => b.id !== draggedBlock.id) : [...(inbox || [])];
-
-                saveWeekData({
-                    ...weekData,
-                    calendar: newCalendar,
-                    inbox: newInbox,
-                    bank: [...bank, { ...draggedBlock, day: null, start: null }]
-                });
-                setDraggedBlock(null);
-                setDropIndicator(null);
-            };
-
-            // --- EXPORT/IMPORT ---
-            const handleExport = () => {
-                const dataStr = JSON.stringify(weekData, null, 2);
-                const blob = new Blob([dataStr], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `planering_v${currentWeekIndex}.json`;
-                document.body.appendChild(link);
-                link.click(); document.body.removeChild(link);
-            };
-            const handleImport = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => { try { saveWeekData(JSON.parse(e.target.result)); alert("Laddat!"); } catch { alert("Fel format!"); } };
-                reader.readAsText(file);
-            };
-
-            const doneBok = calendar.filter(b => b.type === 'creative' && b.status === 'done').reduce((acc,b) => acc + b.duration, 0);
-            const totalBok = [...calendar, ...bank].filter(b => b.type === 'creative').reduce((acc,b) => acc + b.duration, 0);
-            const doneJob = calendar.filter(b => b.type === 'job' && b.status === 'done').reduce((acc,b) => acc + b.duration, 0);
-            const totalJob = [...calendar, ...bank].filter(b => b.type === 'job').reduce((acc,b) => acc + b.duration, 0);
-
-            return (
-                <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
-                    {/* HEADER */}
-                    <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-50">
-                        <div className="px-4 py-2 flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center bg-zinc-100 rounded-lg p-1">
-                                    <button onClick={() => setCurrentWeekIndex(Math.max(1, currentWeekIndex - 1))} className="hover:bg-white rounded p-1"><ChevronLeft size={16}/></button>
-                                    <span className="text-sm font-bold w-20 text-center">V.{currentWeekIndex}</span>
-                                    <button onClick={() => setCurrentWeekIndex(currentWeekIndex + 1)} className="hover:bg-white rounded p-1"><ChevronRight size={16}/></button>
-                                </div>
-                                <div className="h-6 w-px bg-zinc-200"></div>
-                                <div className="flex gap-2 items-center text-xs text-zinc-400">
-                                    <div className="w-2 h-2 rounded-full bg-green-500"></div> <span>Sparat lokalt</span>
-                                    <div className="h-6 w-px bg-zinc-200"></div>
-                                    <span className="text-[10px]">v{APP_VERSION}</span>
-                                </div>
-                                <div className="flex gap-1">
-                                    <button onClick={handleExport} className="text-zinc-400 hover:text-zinc-600"><Save size={14}/></button>
-                                    <button onClick={() => fileInputRef.current.click()} className="text-zinc-400 hover:text-zinc-600"><Upload size={14}/></button>
-                                    <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
-                                </div>
-                            </div>
-                            <div className="flex gap-6">
-                                <StatPill label="Bok" current={doneBok} total={totalBok} unit="h" />
-                                <StatPill label="Jobb" current={doneJob} total={totalJob} unit="h" target={24} warnBelowTarget={true} />
-                            </div>
+      {/* MAIN CONTENT */}
+      <div className="flex-grow flex flex-col overflow-hidden relative">
+        <div className="flex-grow overflow-auto p-2">
+            <div className="grid grid-cols-8 gap-0 min-w-[800px] border-l border-zinc-200 bg-white">
+                
+                {/* Tidsaxel */}
+                <div className="col-span-1 border-r border-zinc-200 bg-white sticky left-0 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
+                    <div className="h-10 border-b border-zinc-100 bg-zinc-50"></div>
+                    {HOURS.map(h => (
+                        <div key={h} className="border-b border-zinc-50 text-[10px] font-medium text-zinc-400 pr-2 pt-1 text-right" style={{height: `${HOUR_HEIGHT}rem`}}>
+                            {h}:00
                         </div>
-                    </header>
+                    ))}
+                </div>
 
-                    {/* GRID */}
-                    <div className="flex-grow flex flex-col overflow-hidden relative">
-                        <div className="flex-grow overflow-auto p-2">
-                            <div className="grid grid-cols-8 gap-0 min-w-[800px] border-l border-zinc-200 bg-white">
-                                <div className="col-span-1 border-r border-zinc-200 bg-white sticky left-0 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
-                                    <div className="h-10 border-b border-zinc-100 bg-zinc-50"></div>
-                                    {HOURS.map(h => (
-                                        <div key={h} className="border-b border-zinc-50 text-[10px] font-medium text-zinc-400 pr-2 pt-1 text-right" style={{height: `${HOUR_HEIGHT}rem`}}>{h}:00</div>
-                                    ))}
-                                </div>
+                {/* Dagar */}
+                {DAYS.map((dayName, dIndex) => {
+                    const isToday = dIndex === todayIndex;
+                    const dayBlocks = calendar.filter(b => b.day === dIndex);
+                    
+                    // Group Logs Logic
+                    const dayLogs = logs[dIndex] || [];
+                    const groupedLogs = dayLogs.reduce((acc, log) => {
+                        const existingGroup = acc.find(g => Math.abs(g.timestamp - log.timestamp) < 0.25); // Cluster if within 15 min
+                        if (existingGroup) {
+                            existingGroup.count++;
+                            existingGroup.items.push(log);
+                        } else {
+                            acc.push({ ...log, count: 1, items: [log] });
+                        }
+                        return acc;
+                    }, []);
 
-                                {DAYS.map((dayName, dIndex) => {
-                                    const isToday = dIndex === todayIndex;
-                                    const dayBlocks = calendar.filter(b => b.day === dIndex);
-                                    const dayLogs = logs[dIndex] || [];
-                                    const groupedLogs = dayLogs.reduce((acc, log) => {
-                                        const existingGroup = acc.find(g => Math.abs(g.timestamp - log.timestamp) < 0.25);
-                                        if (existingGroup) { existingGroup.count++; existingGroup.items.push(log); }
-                                        else { acc.push({ ...log, count: 1, items: [log] }); }
-                                        return acc;
-                                    }, []);
-                                    const logCount = dayLogs.length;
-                                    const isSuperDay = logCount >= 4;
-                                    const dayJob = dayBlocks.filter(b => b.type === 'job');
-                                    const dayBok = dayBlocks.filter(b => b.type === 'creative');
+                    const logCount = dayLogs.length;
+                    const isSuperDay = logCount >= 4;
 
-                                    return (
-                                        <div key={dIndex} className={`col-span-1 relative border-r border-zinc-100 group ${isToday ? 'bg-blue-50/30' : ''}`}>
-                                            <div className={`h-10 flex flex-col items-center justify-center border-b border-zinc-200 sticky top-0 z-20 ${isSuperDay ? 'bg-yellow-100 text-yellow-900 border-yellow-300' : (isToday ? 'bg-blue-100/80 text-blue-900' : 'bg-zinc-50 text-zinc-500')} transition-colors duration-500`}>
-                                                <div className="flex items-center justify-between w-full px-2">
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-xs font-bold uppercase">{dayName}</span>
-                                                        {isToday && !isSuperDay && <span className="bg-blue-600 text-white text-[8px] font-bold px-1 rounded-sm">IDAG</span>}
-                                                        {isSuperDay && <span className="bg-yellow-500 text-white text-[8px] font-bold px-1 rounded-sm flex items-center">⭐ PEPP!</span>}
-                                                    </div>
-                                                    <button onClick={() => setLogModal({ dayIndex: dIndex })} className={`p-0.5 rounded transition-all hover:scale-110 ${logCount > 0 ? 'text-yellow-500 font-bold' : 'text-zinc-300 hover:text-zinc-500'}`}>
-                                                        <div className="flex items-center">{logCount > 0 ? logCount : ''}<Zap size={14} fill={logCount > 0 ? "currentColor" : "none"} /></div>
-                                                    </button>
-                                                </div>
-                                                <div className="flex gap-1 text-[8px] font-bold opacity-70">
-                                                    <span className={dayBok.some(b=>b.status==='done') ? 'text-black' : ''}>B:{dayBok.reduce((a,b)=>a+(b.status==='done'?b.duration:0),0)}h</span>
-                                                    <span className={dayJob.some(b=>b.status==='done') ? 'text-black' : ''}>J:{dayJob.reduce((a,b)=>a+(b.status==='done'?b.duration:0),0)}h</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="relative" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-                                                {HOURS.map(h => (
-                                                    <div key={h} className="border-b border-zinc-50 w-full relative group/cell hover:bg-black/5 transition-colors"
-                                                        style={{height: `${HOUR_HEIGHT}rem`}}
-                                                        onDragOver={(e) => handleDragOver(e, dIndex, h)}>
-                                                        {!calendar.some(b => b.day === dIndex && b.start <= h && (b.start + b.duration) > h) && (
-                                                            <button onClick={() => setAddModal({ day: dIndex, hour: h })} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 text-zinc-300 hover:text-zinc-500"><Plus size={16} /></button>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                                {dropIndicator && dropIndicator.day === dIndex && (
-                                                    <div className={`absolute left-0 right-0 pointer-events-none z-40 ${dropIndicator.type === 'merge' ? 'border-2 border-blue-500 bg-blue-500/20' : 'h-0.5 bg-blue-600'}`}
-                                                        style={{ top: `${(dropIndicator.hour - 7) * HOUR_HEIGHT}rem`, height: dropIndicator.type === 'merge' ? `${(calendar.find(b => b.id === dropIndicator.targetBlockId)?.duration || 1) * HOUR_HEIGHT}rem` : '2px' }} />
-                                                )}
-                                                {calendar.filter(b => b.day === dIndex).map(block => (
-                                                    <Block key={block.id} block={block} isSelected={selectedBlockIds.includes(block.id)} isEditing={editingLabelId === block.id}
-                                                        onClick={(e) => handleBlockClick(e, block.id)} onDragStart={(e) => handleDragStart(e, block, 'calendar')} onResizeStart={handleResizeStart}
-                                                        onUpdateLabel={(lbl) => { const u = (l) => l.map(b => b.id === block.id ? { ...b, label: lbl } : b); saveWeekData({ ...weekData, calendar: u(calendar) }); setEditingLabelId(null); }}
-                                                        onAction={(action) => {
-                                                            if(action === 'toggle') toggleStatus(block.id);
-                                                            if(action === 'split') splitBlock(block);
-                                                            if(action === 'edit') setEditingLabelId(block.id);
-                                                            if(action === 'delete') deleteBlock(block.id);
-                                                            if(action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
-                                                        }}
-                                                    />
-                                                ))}
-                                                {groupedLogs.map((group, i) => (
-                                                    <div key={group.id} className="absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center"
-                                                        style={{ top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`, right: '0px' }}
-                                                        onClick={(e) => { e.stopPropagation(); setLogModal({ dayIndex: dIndex }) }}>
-                                                        <div className="bg-white rounded-full p-0.5 shadow-md border border-yellow-200 relative">
-                                                            {group.type === 'zap' ? <Zap size={14} className="text-yellow-500" fill="currentColor"/> : <Star size={14} className="text-yellow-500" fill="currentColor"/>}
-                                                            {group.count > 1 && <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">{group.count}</div>}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                    const dayJob = dayBlocks.filter(b => b.type === 'job');
+                    const dayBok = dayBlocks.filter(b => b.type === 'creative');
+                    
+                    return (
+                        <div key={dIndex} className={`col-span-1 relative border-r border-zinc-100 group ${isToday ? 'bg-blue-50/30' : ''}`}>
+                            {/* Dag Header */}
+                            <div className={`h-10 flex flex-col items-center justify-center border-b border-zinc-200 sticky top-0 z-20 ${isSuperDay ? 'bg-yellow-100 text-yellow-900 border-yellow-300' : (isToday ? 'bg-blue-100/80 text-blue-900' : 'bg-zinc-50 text-zinc-500')} transition-colors duration-500`}>
+                                <div className="flex items-center justify-between w-full px-2">
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-xs font-bold uppercase">{dayName}</span>
+                                        {isToday && !isSuperDay && <span className="bg-blue-600 text-white text-[8px] font-bold px-1 rounded-sm">IDAG</span>}
+                                        {isSuperDay && <span className="bg-yellow-500 text-white text-[8px] font-bold px-1 rounded-sm flex items-center">⭐ PEPP!</span>}
+                                    </div>
+                                    <button 
+                                        onClick={() => setLogModal({ dayIndex: dIndex })}
+                                        className={`p-0.5 rounded transition-all hover:scale-110 ${logCount > 0 ? 'text-yellow-500 font-bold' : 'text-zinc-300 hover:text-zinc-500'}`}
+                                    >
+                                        <div className="flex items-center">
+                                            {logCount > 0 ? logCount : ''}
+                                            <Zap size={14} fill={logCount > 0 ? "currentColor" : "none"} />
                                         </div>
-                                    );
-                                })}
+                                    </button>
+                                </div>
+                                <div className="flex gap-1 text-[8px] font-bold opacity-70">
+                                    <span className={dayBok.some(b=>b.status==='done') ? 'text-black' : ''}>B:{dayBok.reduce((a,b)=>a+(b.status==='done'?b.duration:0),0)}h</span>
+                                    <span className={dayJob.some(b=>b.status==='done') ? 'text-black' : ''}>J:{dayJob.reduce((a,b)=>a+(b.status==='done'?b.duration:0),0)}h</span>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* BANK & FOOTER */}
-                        <div className="flex-none bg-zinc-100 border-t border-zinc-200 p-2 min-h-[80px]" onDragOver={e=>e.preventDefault()} onDrop={handleDropOnBank}>
-                            <div className="flex gap-2 items-center">
-                                <div className="flex flex-col gap-2 items-center mr-2 border-r border-zinc-200 pr-2">
-                                    <span className="text-[10px] font-bold uppercase text-zinc-400 [writing-mode:vertical-rl] rotate-180 flex items-center justify-center h-12 w-4">BANKEN</span>
-                                    <div className="relative micro-menu">
-                                        <button onClick={() => setMicroMenuOpen(!microMenuOpen)} className="w-6 h-6 rounded-full bg-yellow-400 text-yellow-900 flex items-center justify-center hover:scale-110 transition-transform shadow-sm"><Zap size={14} fill="currentColor" /></button>
-                                        {microMenuOpen && (
-                                            <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl p-2 w-48 z-[100] animate-in slide-in-from-bottom-2 border border-zinc-200">
-                                                <div className="flex justify-between items-center mb-2 px-2 border-b border-zinc-100 pb-1">
-                                                    <h4 className="text-[10px] font-bold uppercase text-zinc-400">Logga nu ({DAYS[todayIndex]})</h4>
-                                                    <button onClick={() => setSettingsOpen(true)} className="text-zinc-300 hover:text-zinc-500"><Settings size={12}/></button>
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                    {presets.map((preset, i) => (
-                                                        <button key={i} onClick={() => handleMicroAdd(preset.label)} className="text-left px-2 py-1.5 hover:bg-yellow-50 hover:text-yellow-700 rounded text-xs font-bold flex items-center gap-2 transition-colors">
-                                                            {preset.icon === 'zap' ? <Zap size={12}/> : <Star size={12}/>} {preset.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
+                            {/* Drop Zone */}
+                            <div className="relative" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+                                {HOURS.map(h => (
+                                    <div key={h} className="border-b border-zinc-50 w-full relative group/cell hover:bg-black/5 transition-colors"
+                                        style={{height: `${HOUR_HEIGHT}rem`}}
+                                        onDragOver={(e) => handleDragOver(e, dIndex, h)}>
+                                        {!calendar.some(b => b.day === dIndex && b.start <= h && (b.start + b.duration) > h) && (
+                                            <button onClick={() => setAddModal({ day: dIndex, hour: h })} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 text-zinc-300 hover:text-zinc-500">
+                                                <Plus size={16} />
+                                            </button>
                                         )}
                                     </div>
-                                </div>
+                                ))}
 
-                                <div className="flex gap-2 overflow-x-auto pb-2 items-center flex-grow">
-                                    {bank.map(block => (
-                                        <div key={block.id} draggable onDragStart={(e) => handleDragStart(e, block, 'bank')} onClick={(e) => handleBlockClick(e, block.id)}
-                                            className={`flex-shrink-0 w-24 h-12 flex flex-col justify-center items-center rounded text-xs cursor-grab shadow-sm border ${CATEGORIES[block.type].bg} ${CATEGORIES[block.type].text} ${CATEGORIES[block.type].border} ${selectedBlockIds.includes(block.id) ? 'ring-2 ring-black' : ''}`}>
-                                            <span className="font-bold truncate w-full text-center px-1">{block.label}</span>
-                                            <span className="opacity-70 text-[10px]">{block.duration}h</span>
+                                {dropIndicator && dropIndicator.day === dIndex && (
+                                    <div className={`absolute left-0 right-0 pointer-events-none z-40 ${dropIndicator.type === 'merge' ? 'border-2 border-blue-500 bg-blue-500/20' : 'h-0.5 bg-blue-600'}`}
+                                        style={{
+                                            top: `${(dropIndicator.hour - 7) * HOUR_HEIGHT}rem`,
+                                            height: dropIndicator.type === 'merge' ? `${(calendar.find(b => b.id === dropIndicator.targetBlockId)?.duration || 1) * HOUR_HEIGHT}rem` : '2px',
+                                        }}
+                                    />
+                                )}
+
+                                {/* BLOCKS */}
+                                {calendar.filter(b => b.day === dIndex).map(block => (
+                                    <Block 
+                                        key={block.id} 
+                                        block={block} 
+                                        isSelected={selectedBlockIds.includes(block.id)}
+                                        isEditing={editingLabelId === block.id}
+                                        onClick={(e) => handleBlockClick(e, block.id)}
+                                        onDragStart={(e) => handleDragStart(e, block, 'calendar')}
+                                        onResizeStart={handleResizeStart}
+                                        onUpdateLabel={(lbl) => {
+                                            const u = (l) => l.map(b => b.id === block.id ? { ...b, label: lbl } : b);
+                                            updateCurrentWeek(u(calendar), bank, logs);
+                                            setEditingLabelId(null);
+                                        }}
+                                        onAction={(action) => {
+                                            if(action === 'toggle') toggleStatus(block.id);
+                                            if(action === 'split') splitBlock(block);
+                                            if(action === 'edit') setEditingLabelId(block.id);
+                                            if(action === 'delete') deleteBlock(block.id);
+                                            if(action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
+                                        }}
+                                    />
+                                ))}
+
+                                {/* LOG ICONS (GROUPED) - Positioned Right-0 or even hanging slightly out */}
+                                {groupedLogs.map((group, i) => (
+                                    <div 
+                                        key={group.id}
+                                        className="absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center"
+                                        style={{ 
+                                            top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`,
+                                            right: '0px' // Slickad mot högerkanten
+                                        }}
+                                        onClick={(e) => { e.stopPropagation(); setLogModal({ dayIndex: dIndex }) }}
+                                    >
+                                        <div className="bg-white rounded-full p-0.5 shadow-md border border-yellow-200 relative">
+                                            {group.type === 'zap' ? <Zap size={14} className="text-yellow-500" fill="currentColor"/> : <Star size={14} className="text-yellow-500" fill="currentColor"/>}
+                                            
+                                            {/* COMBO BADGE */}
+                                            {group.count > 1 && (
+                                                <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">
+                                                    {group.count}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
-
-                                <div className="border-l border-zinc-200 pl-2 relative inbox-panel">
-                                    <button onClick={() => setInboxOpen(!inboxOpen)} className={`h-12 w-8 rounded flex flex-col items-center justify-center gap-1 ${inboxOpen ? 'bg-blue-100 text-blue-900' : 'text-zinc-400 hover:bg-zinc-200'}`}>
-                                        <Inbox size={16} />
-                                        <span className="text-[8px] font-bold rotate-180 [writing-mode:vertical-rl]">INBOX</span>
-                                    </button>
-                                    {inboxOpen && (
-                                        <div className="absolute bottom-full right-0 mb-2 w-64 bg-white shadow-2xl rounded-lg border border-zinc-200 z-[100] animate-in slide-in-from-bottom-2 flex flex-col max-h-96">
-                                            <div className="p-3 border-b border-zinc-100 bg-blue-50 flex justify-between items-center">
-                                                <h4 className="text-xs font-bold uppercase text-blue-900">ToDo Inbox</h4>
-                                                <button onClick={() => setInboxOpen(false)}><X size={14} className="text-blue-900"/></button>
-                                            </div>
-                                            <div className="p-2 overflow-y-auto flex-grow space-y-2 bg-slate-50 min-h-[150px]">
-                                                {(inbox || []).map(todo => (
-                                                    <div key={todo.id} draggable onDragStart={(e) => handleDragStart(e, todo, 'inbox')}
-                                                        className="bg-white p-2 rounded shadow-sm border border-blue-100 cursor-grab hover:border-blue-300 text-sm flex justify-between items-center">
-                                                        <span>{todo.label}</span><span className="text-[10px] font-mono text-zinc-400">{todo.duration}h</span>
-                                                    </div>
+                                        
+                                        {/* Tooltip List */}
+                                        <div className="absolute right-full top-0 mr-2 bg-black/90 text-white text-[10px] p-2 rounded w-max opacity-0 group-hover/icon:opacity-100 pointer-events-none z-[70] shadow-xl">
+                                            <ul className="list-disc pl-3">
+                                                {group.items.map((item, idx) => (
+                                                    <li key={idx}>{item.text}</li>
                                                 ))}
-                                            </div>
-                                            <div className="p-2 border-t border-zinc-100">
-                                                <form onSubmit={(e) => { e.preventDefault(); addToInbox(e.target.elements.todoInput.value); e.target.reset(); }}>
-                                                    <input name="todoInput" placeholder="+ ToDo..." className="w-full text-xs p-2 border rounded" />
-                                                </form>
-                                            </div>
+                                            </ul>
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                ))}
+
                             </div>
                         </div>
+                    );
+                })}
+            </div>
+        </div>
 
-                        {/* MODALS */}
-                        {selectedBlockIds.length > 1 && (
-                            <div className="bulk-menu absolute bottom-24 left-1/2 -translate-x-1/2 bg-zinc-900 text-white rounded-full px-6 py-3 shadow-2xl flex items-center gap-4 z-[60] animate-in slide-in-from-bottom-4">
-                                <span className="font-bold text-sm">{selectedBlockIds.length} markerade</span>
-                                <div className="h-4 w-px bg-white/20"></div>
-                                <button onClick={handleBulkToggle} className="flex items-center gap-2 hover:text-green-400 text-sm font-bold"><Check size={16}/> Klara</button>
-                                <button onClick={handleBulkDelete} className="flex items-center gap-2 hover:text-red-400 text-sm font-bold"><Trash2 size={16}/> Radera</button>
-                                <div className="h-4 w-px bg-white/20"></div>
-                                <button onClick={() => setSelectedBlockIds([])}><X size={16}/></button>
-                            </div>
-                        )}
+        {/* BANK & MICRO-MENU */}
+        <div className="flex-none bg-zinc-100 border-t border-zinc-200 p-2 min-h-[80px]" onDragOver={e=>e.preventDefault()} onDrop={(e) => {
+             e.preventDefault();
+             if (!draggedBlock || sourceContainer === 'bank') return;
+             updateCurrentWeek(calendar.filter(b => b.id !== draggedBlock.id), [...bank, { ...draggedBlock, day: null, start: null }], logs);
+             setDraggedBlock(null); setDropIndicator(null);
+        }}>
+            <div className="flex gap-2 items-center">
+                 <div className="flex flex-col gap-2 items-center mr-2">
+                     <span className="text-[10px] font-bold uppercase text-zinc-400 [writing-mode:vertical-rl] rotate-180 flex items-center justify-center h-12 w-4">BANKEN</span>
+                     
+                     <div className="relative micro-menu">
+                         <button onClick={() => setMicroMenuOpen(!microMenuOpen)} className="w-6 h-6 rounded-full bg-yellow-400 text-yellow-900 flex items-center justify-center hover:scale-110 transition-transform shadow-sm" title="Lägg till stjärna/prestation">
+                             <Zap size={14} fill="currentColor" />
+                         </button>
+                         
+                         {microMenuOpen && (
+                             <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl p-2 w-48 z-[100] animate-in slide-in-from-bottom-2 border border-zinc-200">
+                                 <div className="flex justify-between items-center mb-2 px-2 border-b border-zinc-100 pb-1">
+                                     <h4 className="text-[10px] font-bold uppercase text-zinc-400">Logga nu ({DAYS[todayIndex]})</h4>
+                                     <button onClick={() => setSettingsOpen(true)} className="text-zinc-300 hover:text-zinc-500"><Settings size={12}/></button>
+                                 </div>
+                                 <div className="flex flex-col gap-1">
+                                     {presets.map((preset, i) => (
+                                         <button 
+                                            key={i}
+                                            onClick={() => handleMicroAdd(preset.label)} 
+                                            className="text-left px-2 py-1.5 hover:bg-yellow-50 hover:text-yellow-700 rounded text-xs font-bold flex items-center gap-2 transition-colors"
+                                         >
+                                             {preset.icon === 'zap' ? <Zap size={12}/> : <Star size={12}/>}
+                                             {preset.label}
+                                         </button>
+                                     ))}
+                                 </div>
+                             </div>
+                         )}
+                     </div>
+                 </div>
 
-                        {addModal && (
-                            <div className="add-modal fixed inset-0 bg-black/10 flex items-center justify-center z-[100]" onClick={() => setAddModal(null)}>
-                                <div className="bg-white p-3 rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
-                                    <div className="grid grid-cols-2 gap-2 w-48">
-                                        {Object.values(CATEGORIES).map(cat => (
-                                            <button key={cat.id} onClick={() => addNewBlock(cat.id)} className={`p-2 rounded text-xs font-bold text-left ${cat.bg} ${cat.text}`}>{cat.label}</button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                 <div className="flex gap-2 overflow-x-auto pb-2 items-center flex-grow">
+                     {bank.length === 0 && <span className="text-xs text-zinc-300 italic">Dra pass hit...</span>}
+                     {bank.map(block => (
+                         <div key={block.id} draggable onDragStart={(e) => handleDragStart(e, block, 'bank')} onClick={(e) => handleBlockClick(e, block.id)}
+                            className={`flex-shrink-0 w-24 h-12 flex flex-col justify-center items-center rounded text-xs cursor-grab shadow-sm border ${CATEGORIES[block.type].bg} ${CATEGORIES[block.type].text} ${CATEGORIES[block.type].border} ${selectedBlockIds.includes(block.id) ? 'ring-2 ring-black' : ''}`}>
+                             <span className="font-bold truncate w-full text-center px-1">{block.label}</span>
+                             <span className="opacity-70 text-[10px]">{block.duration}h</span>
+                         </div>
+                     ))}
+                 </div>
+            </div>
+        </div>
 
-                        {noteModal && (
-                            <div className="note-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setNoteModal(null)}>
-                                <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                                    <div className="bg-zinc-50 p-3 border-b border-zinc-100 flex justify-between items-center">
-                                        <h3 className="text-sm font-bold uppercase text-zinc-500">Anteckningar</h3>
-                                        <button onClick={() => setNoteModal(null)} className="text-zinc-400 hover:text-zinc-900"><X size={16}/></button>
-                                    </div>
-                                    <div className="p-4"><textarea autoFocus className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm resize-none focus:outline-none" value={noteModal.text} onChange={e => setNoteModal({ ...noteModal, text: e.target.value })} /></div>
-                                    <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end"><button onClick={() => updateDescription(noteModal.blockId, noteModal.text)} className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black">Spara</button></div>
-                                </div>
-                            </div>
-                        )}
+        {/* BULK MENU */}
+        {selectedBlockIds.length > 1 && (
+            <div className="bulk-menu absolute bottom-24 left-1/2 -translate-x-1/2 bg-zinc-900 text-white rounded-full px-6 py-3 shadow-2xl flex items-center gap-4 z-[60] animate-in slide-in-from-bottom-4">
+                <span className="font-bold text-sm">{selectedBlockIds.length} markerade</span>
+                <div className="h-4 w-px bg-white/20"></div>
+                <button onClick={handleBulkToggle} className="flex items-center gap-2 hover:text-green-400 text-sm font-bold"><Check size={16}/> Klara</button>
+                <button onClick={handleBulkDelete} className="flex items-center gap-2 hover:text-red-400 text-sm font-bold"><Trash2 size={16}/> Radera</button>
+                <div className="h-4 w-px bg-white/20"></div>
+                <button onClick={() => setSelectedBlockIds([])}><X size={16}/></button>
+            </div>
+        )}
+      </div>
 
-                        {logModal && (
-                            <div className="log-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogModal(null)}>
-                                <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                                    <div className="bg-yellow-50 p-4 border-b border-yellow-100 flex justify-between items-center">
-                                        <div className="flex items-center gap-2"><Zap className="text-yellow-600" size={18}/><h3 className="text-lg font-bold text-yellow-900">Logg: {DAYS[logModal.dayIndex]}</h3></div>
-                                        <button onClick={() => setLogModal(null)}><X size={20}/></button>
-                                    </div>
-                                    <div className="p-4 bg-white min-h-[200px] max-h-[400px] overflow-y-auto">
-                                        <ul className="space-y-2">{(logs[logModal.dayIndex] || []).map(log => <li key={log.id} className="flex justify-between p-2 bg-zinc-50 rounded border border-zinc-100"><span className="text-sm">{log.text}</span><button onClick={() => removeFromLog(logModal.dayIndex, log.id)}><Trash2 size={14}/></button></li>)}</ul>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {settingsOpen && (
-                            <div className="settings-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setSettingsOpen(false)}>
-                                <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                                    <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between"><h3 className="text-lg font-bold">Inställningar</h3><button onClick={() => setSettingsOpen(false)}><X/></button></div>
-                                    <div className="p-4 space-y-2">{presets.map((p,i)=><div key={i} className="flex gap-2"><input value={p.label} onChange={(e)=>{const n=[...presets];n[i].label=e.target.value;setPresets(n)}} className="flex-grow border rounded px-2"/></div>)}</div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+      {/* ADD MODAL */}
+      {addModal && (
+        <div className="add-modal fixed inset-0 bg-black/10 flex items-center justify-center z-[100]" onClick={() => setAddModal(null)}>
+            <div className="bg-white p-3 rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+                <div className="grid grid-cols-2 gap-2 w-48">
+                    {Object.values(CATEGORIES).map(cat => (
+                        <button key={cat.id} onClick={() => addNewBlock(cat.id)} className={`p-2 rounded text-xs font-bold text-left ${cat.bg} ${cat.text}`}>
+                            {cat.label}
+                        </button>
+                    ))}
                 </div>
-            );
-        }
+            </div>
+        </div>
+      )}
 
-        // --- HELPERS ---
-        function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
-            const showWarning = warnBelowTarget && total < target;
-            return (
-                <div className="flex flex-col items-end">
-                    <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">{label} {showWarning && <AlertCircle size={10} className="text-red-500" />}</span>
-                    <div className={`flex items-baseline gap-1 ${showWarning ? 'text-red-600' : 'text-zinc-900'}`}>
-                        <span className="text-lg font-black tracking-tighter">{current}</span><span className="text-[10px] font-medium text-zinc-400">/ {total} {unit}</span>
-                    </div>
-                </div>
-            )
-        }
+      {/* NOTE MODAL */}
+      {noteModal && (
+          <div className="note-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setNoteModal(null)}>
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100" onClick={e => e.stopPropagation()}>
+                  <div className="bg-zinc-50 p-3 border-b border-zinc-100 flex justify-between items-center">
+                      <h3 className="text-sm font-bold uppercase text-zinc-500">Anteckningar</h3>
+                      <button onClick={() => setNoteModal(null)} className="text-zinc-400 hover:text-zinc-900"><X size={16}/></button>
+                  </div>
+                  <div className="p-4">
+                      <textarea 
+                          autoFocus
+                          className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-800 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none focus:bg-white"
+                          placeholder="Vad ska göras? Hur gick det?"
+                          value={noteModal.text}
+                          onChange={e => setNoteModal({ ...noteModal, text: e.target.value })}
+                      />
+                  </div>
+                  <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end">
+                      <button 
+                          onClick={() => updateDescription(noteModal.blockId, noteModal.text)}
+                          className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+                      >
+                          Spara
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
-        function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel }) {
-            const cat = CATEGORIES[block.type] || CATEGORIES.life;
-            const isDone = block.status === 'done';
-            const isInactive = block.status === 'inactive';
-            const HOUR_HEIGHT = 4;
-            const [localLabel, setLocalLabel] = useState(block.label);
-            const inputRef = useRef(null);
-            useEffect(() => { if(isEditing && inputRef.current) inputRef.current.focus(); }, [isEditing]);
+      {/* DAY LOG MODAL */}
+      {logModal && (
+          <div className="log-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogModal(null)}>
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                  <div className="bg-yellow-50 p-4 border-b border-yellow-100 flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                          <Zap className="text-yellow-600" size={18} fill="currentColor"/>
+                          <h3 className="text-lg font-bold text-yellow-900 uppercase tracking-tight">Logg: {DAYS[logModal.dayIndex]}</h3>
+                      </div>
+                      <button onClick={() => setLogModal(null)} className="text-yellow-700 hover:text-yellow-900"><X size={20}/></button>
+                  </div>
+                  
+                  <div className="p-4 bg-white min-h-[200px] max-h-[400px] overflow-y-auto">
+                      {(logs[logModal.dayIndex] || []).length === 0 ? (
+                          <div className="text-center text-zinc-400 italic py-8">Inga aktiviteter loggade än.</div>
+                      ) : (
+                          <ul className="space-y-2">
+                              {(logs[logModal.dayIndex] || []).sort((a,b) => a.timestamp - b.timestamp).map((log) => (
+                                  <li key={log.id} className="flex justify-between items-center p-2 bg-zinc-50 rounded border border-zinc-100 group">
+                                      <div className="flex flex-col">
+                                          <span className="text-sm font-medium text-zinc-800">{log.text}</span>
+                                          <span className="text-[10px] text-zinc-400 font-mono">
+                                              {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60).toString().padStart(2, '0')}
+                                          </span>
+                                      </div>
+                                      <button onClick={() => removeFromLog(logModal.dayIndex, log.id)} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <Trash2 size={14} />
+                                      </button>
+                                  </li>
+                              ))}
+                          </ul>
+                      )}
+                  </div>
 
-            if (isInactive) return <div onClick={() => onAction('toggle')} className="absolute left-1 right-1 border-2 border-dashed border-zinc-300 text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400" style={{ top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${(block.duration * HOUR_HEIGHT) - 0.1}rem` }}>{block.label}</div>;
+                  <div className="p-4 bg-zinc-50 border-t border-zinc-100">
+                      <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h4>
+                      <div className="flex flex-wrap gap-2">
+                          {presets.map((preset, i) => (
+                              <button 
+                                key={i}
+                                onClick={() => addToLog(logModal.dayIndex, preset.label)}
+                                className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
+                              >
+                                  {preset.icon === 'zap' ? <Zap size={10}/> : <Star size={10}/>} {preset.label}
+                              </button>
+                          ))}
+                      </div>
+                      
+                      <form 
+                        className="mt-4 flex gap-2"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            const val = e.target.elements.logInput.value;
+                            if(val) { addToLog(logModal.dayIndex, val); e.target.reset(); }
+                        }}
+                      >
+                          <input name="logInput" type="text" placeholder="Eget..." className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"/>
+                          <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black"><Plus size={16}/></button>
+                      </form>
+                  </div>
+              </div>
+          </div>
+      )}
 
-            return (
-                <>
-                <div draggable={!isEditing} onDragStart={onDragStart} onClick={onClick}
-                    className={`block-interactive absolute left-1 right-1 z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2 ${isDone ? cat.doneStyle : `${cat.bg} ${cat.text} ${cat.border}`} ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}`}
-                    style={{ top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${(block.duration * HOUR_HEIGHT) - 0.1}rem` }}>
-                    <div className="flex justify-between items-start p-1.5 h-full relative">
-                        <div className="flex flex-col w-full h-full">
-                            <div className="flex justify-between w-full">
-                                {isEditing ? <form onSubmit={e => {e.preventDefault(); onUpdateLabel(localLabel)}}><input ref={inputRef} type="text" value={localLabel} onChange={e => setLocalLabel(e.target.value)} onBlur={() => onUpdateLabel(localLabel)} className="w-full bg-transparent text-[10px] font-bold border-b border-white/50 focus:outline-none" /></form> :
-                                    <div className={`flex flex-col leading-none w-full`}><div className="flex justify-between items-start w-full pr-4"><span className={`text-[10px] font-bold uppercase truncate ${isDone && 'line-through decoration-zinc-300'}`}>{block.label}</span></div>{block.duration >= 0.5 && <span className="text-[9px] opacity-60 font-mono mt-0.5">{block.duration}h</span>}</div>}
-                            </div>
-                            {block.description && <div className={`mt-1 text-[9px] leading-tight opacity-70 overflow-hidden text-ellipsis line-clamp-2 ${isDone ? 'line-through' : ''}`}>{block.description}</div>}
+      {/* SETTINGS MODAL */}
+      {settingsOpen && (
+          <div className="settings-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setSettingsOpen(false)}>
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                  <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-zinc-700">Inställningar</h3>
+                      <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-zinc-900"><X size={20}/></button>
+                  </div>
+                  <div className="p-4">
+                      <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Redigera Snabbval</h4>
+                      <ul className="space-y-2 mb-4">
+                          {presets.map((preset, i) => (
+                              <li key={i} className="flex gap-2">
+                                  <input 
+                                    className="flex-grow bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-sm"
+                                    value={preset.label}
+                                    onChange={(e) => {
+                                        const newPresets = [...presets];
+                                        newPresets[i].label = e.target.value;
+                                        setPresets(newPresets);
+                                    }}
+                                  />
+                                  <button 
+                                    onClick={() => setPresets(presets.filter((_, idx) => idx !== i))}
+                                    className="text-zinc-400 hover:text-red-500"
+                                  >
+                                      <Trash2 size={16}/>
+                                  </button>
+                              </li>
+                          ))}
+                      </ul>
+                      <button 
+                        onClick={() => setPresets([...presets, { label: 'Ny aktivitet', category: 'training', icon: 'star' }])}
+                        className="w-full py-2 border border-dashed border-zinc-300 text-zinc-400 rounded text-sm hover:text-zinc-600 hover:border-zinc-400"
+                      >
+                          + Lägg till snabbval
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+    </div>
+  );
+}
+
+// --- SUB COMPONENTS ---
+
+function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
+    const isDone = current >= total;
+    const showWarning = warnBelowTarget && total < target;
+
+    return (
+        <div className="flex flex-col items-end">
+            <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+                {label} 
+                {showWarning && <AlertCircle size={10} className="text-red-500" />}
+            </span>
+            <div className={`flex items-baseline gap-1 ${showWarning ? 'text-red-600' : (isDone ? 'text-green-600' : 'text-zinc-900')}`}>
+                <span className="text-lg font-black tracking-tighter">{current}</span>
+                <span className="text-[10px] font-medium text-zinc-400">
+                    / {total} {unit} 
+                    {showWarning && <span className="text-[8px] text-red-500 ml-1 font-bold">(Mål {target})</span>}
+                </span>
+            </div>
+        </div>
+    )
+}
+
+function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel }) {
+  const cat = CATEGORIES[block.type];
+  const isDone = block.status === 'done';
+  const isInactive = block.status === 'inactive';
+  const HOUR_HEIGHT = 4; // rem
+
+  const [localLabel, setLocalLabel] = useState(block.label);
+  const inputRef = useRef(null);
+
+  useEffect(() => { if(isEditing && inputRef.current) inputRef.current.focus(); }, [isEditing]);
+
+  if (isInactive) return (
+      <div onClick={() => onAction('toggle')} className="absolute left-1 right-1 border-2 border-dashed border-zinc-300 text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400"
+           style={{ top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${(block.duration * HOUR_HEIGHT) - 0.1}rem` }}>
+          {block.label}
+      </div>
+  );
+
+  return (
+    <>
+    <div
+      draggable={!isEditing}
+      onDragStart={onDragStart}
+      onClick={onClick}
+      className={`
+        block-interactive absolute left-1 right-1 z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2
+        ${isDone ? cat.doneStyle : `${cat.bg} ${cat.text} ${cat.border}`}
+        ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}
+      `}
+      style={{
+        top: `${(block.start - 7) * HOUR_HEIGHT}rem`, 
+        height: `${(block.duration * HOUR_HEIGHT) - 0.1}rem`,
+      }}
+    >
+      <div className="flex justify-between items-start p-1.5 h-full relative">
+        <div className="flex flex-col w-full h-full">
+            <div className="flex justify-between w-full">
+                {isEditing ? (
+                    <form onSubmit={e => {e.preventDefault(); onUpdateLabel(localLabel)}}>
+                        <input ref={inputRef} type="text" value={localLabel} onChange={e => setLocalLabel(e.target.value)} onBlur={() => onUpdateLabel(localLabel)}
+                            className="w-full bg-transparent text-[10px] font-bold border-b border-white/50 focus:outline-none" />
+                    </form>
+                ) : (
+                     <div className={`flex flex-col leading-none w-full`}>
+                        <div className="flex justify-between items-start w-full pr-4">
+                            <span className={`text-[10px] font-bold uppercase truncate ${isDone && 'line-through decoration-zinc-300'}`}>{block.label}</span>
                         </div>
-                        {!isEditing && <div className={`absolute top-1 right-1 flex flex-col gap-1 transition-all ${isSelected ? 'opacity-100' : 'opacity-0 group-hover/block:opacity-100'}`}><button onClick={(e) => { e.stopPropagation(); onAction('toggle'); }} className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isDone ? 'border-transparent bg-current opacity-100' : 'border-current'}`}>{isDone && <Check size={10} className={cat.bg.includes('white') ? 'text-zinc-900' : 'text-white'} strokeWidth={4} />}</button><button onClick={(e) => { e.stopPropagation(); onAction('note'); }} className={`w-4 h-4 rounded-full flex items-center justify-center hover:bg-white/20 text-current`}><MessageSquare size={10} /></button></div>}
-                    </div>
-                    {!isDone && !isEditing && <div className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center hover:bg-black/10 transition-colors opacity-0 group-hover/block:opacity-100" onMouseDown={(e) => onResizeStart(e, block)} onClick={(e) => e.stopPropagation()} ><div className="w-8 h-1 bg-white/30 rounded-full"></div></div>}
+                        {block.duration >= 0.5 && <span className="text-[9px] opacity-60 font-mono mt-0.5">{block.duration}h</span>}
+                     </div>
+                )}
+            </div>
+            
+            {/* DESCRIPTION PREVIEW */}
+            {block.description && (
+                <div className={`mt-1 text-[9px] leading-tight opacity-70 overflow-hidden text-ellipsis line-clamp-2 ${isDone ? 'line-through' : ''}`}>
+                    {block.description}
                 </div>
-                {isSelected && !isEditing && <div className="action-menu absolute left-1/2 -translate-x-1/2 z-[60] flex items-center gap-0.5 bg-zinc-900 text-white p-1 rounded shadow-xl" style={{ top: `${((block.start - 7) * HOUR_HEIGHT) - 2.5}rem` }} ><span className="text-[10px] font-mono w-6 text-center">{block.duration}h</span><div className="w-px h-3 bg-white/20 mx-1"></div><button onClick={(e) => {e.stopPropagation(); onAction('note')}} className="p-1 hover:bg-white/20 rounded relative"><AlignLeft size={12}/>{block.description && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-blue-500 rounded-full"></div>}</button><button onClick={(e) => {e.stopPropagation(); onAction('split')}} className="p-1 hover:bg-white/20 rounded"><Scissors size={12}/></button><button onClick={(e) => {e.stopPropagation(); onAction('edit')}} className="p-1 hover:bg-white/20 rounded"><Edit3 size={12}/></button><button onClick={(e) => {e.stopPropagation(); onAction('delete')}} className="p-1 text-red-400 hover:bg-red-900/30 rounded ml-1"><Trash2 size={12}/></button></div>}
-                </>
-            );
-        }
+            )}
+        </div>
+        
+        {/* Quick Actions (Hover) */}
+        {!isEditing && (
+            <div className={`absolute top-1 right-1 flex flex-col gap-1 transition-all ${isSelected ? 'opacity-100' : 'opacity-0 group-hover/block:opacity-100'}`}>
+                <button onClick={(e) => { e.stopPropagation(); onAction('toggle'); }}
+                    className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isDone ? 'border-transparent bg-current opacity-100' : 'border-current'}`}>
+                    {isDone && <Check size={10} className={cat.bg.includes('white') ? 'text-zinc-900' : 'text-white'} strokeWidth={4} />}
+                </button>
+                 <button onClick={(e) => { e.stopPropagation(); onAction('note'); }}
+                    className={`w-4 h-4 rounded-full flex items-center justify-center hover:bg-white/20 text-current`}>
+                    <MessageSquare size={10} />
+                </button>
+            </div>
+        )}
+      </div>
 
-        // Render app
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<ElasticPlanner />);
-    </script>
-</body>
-</html>
+      {/* RESIZE HANDLE */}
+      {!isDone && !isEditing && (
+          <div 
+            className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center hover:bg-black/10 transition-colors opacity-0 group-hover/block:opacity-100"
+            onMouseDown={(e) => onResizeStart(e, block)}
+            onClick={(e) => e.stopPropagation()} 
+          >
+              <div className="w-8 h-1 bg-white/30 rounded-full"></div>
+          </div>
+      )}
+    </div>
+
+    {/* MENU */}
+    {isSelected && !isEditing && (
+        <div className="action-menu absolute left-1/2 -translate-x-1/2 z-[60] flex items-center gap-0.5 bg-zinc-900 text-white p-1 rounded shadow-xl"
+            style={{ top: `${((block.start - 7) * HOUR_HEIGHT) - 2.5}rem` }} >
+            <span className="text-[10px] font-mono w-6 text-center">{block.duration}h</span>
+            <div className="w-px h-3 bg-white/20 mx-1"></div>
+            <button onClick={(e) => {e.stopPropagation(); onAction('note')}} className="p-1 hover:bg-white/20 rounded relative">
+                <AlignLeft size={12}/>
+                {block.description && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-blue-500 rounded-full"></div>}
+            </button>
+            <button onClick={(e) => {e.stopPropagation(); onAction('split')}} className="p-1 hover:bg-white/20 rounded"><Scissors size={12}/></button>
+            <button onClick={(e) => {e.stopPropagation(); onAction('edit')}} className="p-1 hover:bg-white/20 rounded"><Edit3 size={12}/></button>
+            <button onClick={(e) => {e.stopPropagation(); onAction('delete')}} className="p-1 text-red-400 hover:bg-red-900/30 rounded ml-1"><Trash2 size={12}/></button>
+        </div>
+    )}
+    </>
+  );
+}
