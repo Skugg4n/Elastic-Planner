@@ -6,7 +6,7 @@
     <title>Elastic Planner</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.4/babel.min.js"></script>
     <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -77,11 +77,27 @@
                 status.textContent = 'Startar applikation...';
                 status.style.color = '#22c55e';
                 console.log('All dependencies loaded successfully');
+                console.log('Babel version:', Babel.version);
             }
         }, 2000);
+
+        // Fallback if React app doesn't render after 5 seconds
+        setTimeout(function() {
+            const root = document.getElementById('root');
+            if (root && root.children.length === 1 && root.children[0].tagName === 'DIV') {
+                // Loading screen still showing - React app didn't render
+                const status = document.getElementById('loading-status');
+                if (status) {
+                    status.textContent = 'Varning: React-appen renderades inte. Kontrollera konsolen för fel.';
+                    status.style.color = '#ef4444';
+                    console.error('React app failed to render. Check if Babel is transforming the script.');
+                    console.log('Try opening browser console (F12) to see detailed errors');
+                }
+            }
+        }, 5000);
     </script>
 
-    <script type="text/babel">
+    <script type="text/babel" data-type="module" data-presets="react">
         const { useState, useEffect, useRef } = React;
         const {
             ChevronLeft, ChevronRight, Check, Trash2, RotateCcw, Plus, Minus,
