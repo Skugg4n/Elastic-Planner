@@ -34,7 +34,52 @@
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div style="display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; background: #f4f4f5; color: #71717a;">
+            <div style="text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+                <div style="font-size: 18px; font-weight: 600;">Laddar Elastic Planner...</div>
+                <div id="loading-status" style="font-size: 12px; margin-top: 8px; color: #a1a1aa;">Kontrollerar beroenden...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Debug script loading
+        console.log('Starting Elastic Planner...');
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('Error: ', msg, url, lineNo, columnNo, error);
+            document.getElementById('loading-status').textContent = 'Fel: ' + msg;
+            document.getElementById('loading-status').style.color = '#ef4444';
+            return false;
+        };
+
+        // Check if dependencies loaded
+        setTimeout(function() {
+            const status = document.getElementById('loading-status');
+            if (typeof React === 'undefined') {
+                status.textContent = 'Fel: React kunde inte laddas';
+                status.style.color = '#ef4444';
+                console.error('React not loaded');
+            } else if (typeof ReactDOM === 'undefined') {
+                status.textContent = 'Fel: ReactDOM kunde inte laddas';
+                status.style.color = '#ef4444';
+                console.error('ReactDOM not loaded');
+            } else if (typeof Babel === 'undefined') {
+                status.textContent = 'Fel: Babel kunde inte laddas';
+                status.style.color = '#ef4444';
+                console.error('Babel not loaded');
+            } else if (typeof LucideReact === 'undefined') {
+                status.textContent = 'Fel: Lucide-react kunde inte laddas';
+                status.style.color = '#ef4444';
+                console.error('LucideReact not loaded');
+            } else {
+                status.textContent = 'Startar applikation...';
+                status.style.color = '#22c55e';
+                console.log('All dependencies loaded successfully');
+            }
+        }, 2000);
+    </script>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
