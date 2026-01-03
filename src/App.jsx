@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.1.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -171,10 +171,16 @@ export default function ElasticPlanner() {
   const [noteModal, setNoteModal] = useState(null);
   const [logModal, setLogModal] = useState(null);
   const [logEntryModal, setLogEntryModal] = useState(null);
+  const [editingLogId, setEditingLogId] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [microMenuOpen, setMicroMenuOpen] = useState(false);
   const [dropIndicator, setDropIndicator] = useState(null);
   const [selectedMicroCategory, setSelectedMicroCategory] = useState('life');
+  const [selectedLogCategory, setSelectedLogCategory] = useState('life');
+  const [currentTime, setCurrentTime] = useState(() => {
+    const now = new Date();
+    return now.getHours() + now.getMinutes() / 60;
+  });
 
   const [presets, setPresets] = useState([
     { label: 'Hantlar (Set)', category: 'training', icon: 'zap' },
@@ -198,6 +204,31 @@ export default function ElasticPlanner() {
 
   useEffect(() => {
     document.title = `Elastic Planner v${APP_VERSION}`;
+  }, []);
+
+  useEffect(() => {
+    const updateCurrentTime = () => {
+      const now = new Date();
+      setCurrentTime(now.getHours() + now.getMinutes() / 60);
+    };
+    const interval = setInterval(updateCurrentTime, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setLogModal(null);
+        setLogEntryModal(null);
+        setNoteModal(null);
+        setAddModal(null);
+        setSettingsOpen(false);
+        setMicroMenuOpen(false);
+        setEditingLogId(null);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
@@ -301,6 +332,18 @@ export default function ElasticPlanner() {
     const newDayLogs = currentLogs.filter((e) => e.id !== entryId);
     const newLogs = { ...logs, [day]: newDayLogs };
     updateCurrentWeek(calendar, bank, newLogs);
+  };
+
+  const updateLogCategory = (day, entryId, newCategoryId) => {
+    const currentLogs = logs[day] || [];
+    const newDayLogs = currentLogs.map((log) =>
+      log.id === entryId
+        ? { ...log, categoryId: newCategoryId, type: newCategoryId === 'training' ? 'zap' : 'star' }
+        : log
+    );
+    const newLogs = { ...logs, [day]: newDayLogs };
+    updateCurrentWeek(calendar, bank, newLogs);
+    setEditingLogId(null);
   };
 
   const handleResizeStart = (e, block) => {
@@ -688,6 +731,16 @@ export default function ElasticPlanner() {
                       />
                     )}
 
+                    {isToday && currentTime >= 7 && currentTime <= 24 && (
+                      <div
+                        className="absolute left-0 right-0 pointer-events-none z-50 flex items-center"
+                        style={{ top: `${(currentTime - 7) * HOUR_HEIGHT}rem` }}
+                      >
+                        <div className="w-2 h-2 bg-blue-600 rounded-full -ml-1" />
+                        <div className="flex-grow h-0.5 bg-blue-600" />
+                      </div>
+                    )}
+
                     {calendar
                       .filter((b) => b.day === dIndex)
                       .map((block) => (
@@ -953,22 +1006,44 @@ export default function ElasticPlanner() {
                     .sort((a, b) => a.timestamp - b.timestamp)
                     .map((log) => {
                       const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
+                      const isEditing = editingLogId === log.id;
                       return (
-                        <li key={log.id} className={`flex justify-between items-center p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-zinc-800">{log.text}</span>
-                            <span className="text-[10px] text-zinc-400 font-mono">
-                              {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60)
-                                .toString()
-                                .padStart(2, '0')}
-                            </span>
+                        <li key={log.id} className={`flex flex-col p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
+                          <div className="flex justify-between items-center">
+                            <div
+                              className="flex flex-col flex-grow cursor-pointer"
+                              onClick={() => setEditingLogId(isEditing ? null : log.id)}
+                            >
+                              <span className="text-sm font-medium text-zinc-800">{log.text}</span>
+                              <span className="text-[10px] text-zinc-400 font-mono">
+                                {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60)
+                                  .toString()
+                                  .padStart(2, '0')}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => removeFromLog(logModal.dayIndex, log.id)}
+                              className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => removeFromLog(logModal.dayIndex, log.id)}
-                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {isEditing && (
+                            <div className="flex gap-1 mt-2 pt-2 border-t border-zinc-200">
+                              {Object.values(CATEGORIES).map((cat) => (
+                                <button
+                                  key={cat.id}
+                                  onClick={() => updateLogCategory(logModal.dayIndex, log.id, cat.id)}
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                                    log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                                  }`}
+                                  title={cat.label}
+                                >
+                                  {getCategoryIcon(cat.id, 12)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </li>
                       );
                     })}
@@ -994,27 +1069,43 @@ export default function ElasticPlanner() {
                 })}
               </div>
 
-              <form
-                className="mt-4 flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const val = e.target.elements.logInput.value;
-                  if (val) {
-                    addToLog(logModal.dayIndex, val, null, 'life');
-                    e.target.reset();
-                  }
-                }}
-              >
-                <input
-                  name="logInput"
-                  type="text"
-                  placeholder="Eget..."
-                  className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                />
-                <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black">
-                  <Plus size={16} />
-                </button>
-              </form>
+              <div className="mt-4">
+                <div className="flex gap-1 mb-2">
+                  {Object.values(CATEGORIES).map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedLogCategory(cat.id)}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                        selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                      }`}
+                      title={cat.label}
+                    >
+                      {getCategoryIcon(cat.id, 14)}
+                    </button>
+                  ))}
+                </div>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const val = e.target.elements.logInput.value;
+                    if (val) {
+                      addToLog(logModal.dayIndex, val, null, selectedLogCategory);
+                      e.target.reset();
+                    }
+                  }}
+                >
+                  <input
+                    name="logInput"
+                    type="text"
+                    placeholder="Eget..."
+                    className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                  />
+                  <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black">
+                    <Plus size={16} />
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>
