@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Check, ChevronLeft, ChevronRight, Edit3, MessageSquare, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
 const APP_VERSION = '1.0.3';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
@@ -16,6 +16,8 @@ const CATEGORIES = {
     text: 'text-white',
     border: 'border-zinc-900',
     doneStyle: 'bg-zinc-100 text-zinc-300 border-zinc-200',
+    iconColor: 'text-zinc-900',
+    borderColor: 'border-zinc-900',
   },
   job: {
     id: 'job',
@@ -24,6 +26,8 @@ const CATEGORIES = {
     text: 'text-zinc-900',
     border: 'border-zinc-300',
     doneStyle: 'bg-zinc-50 text-zinc-300 border-zinc-100',
+    iconColor: 'text-blue-600',
+    borderColor: 'border-blue-300',
   },
   training: {
     id: 'training',
@@ -32,6 +36,8 @@ const CATEGORIES = {
     text: 'text-white',
     border: 'border-red-700',
     doneStyle: 'bg-red-50 text-red-200 border-red-100',
+    iconColor: 'text-red-600',
+    borderColor: 'border-red-300',
   },
   life: {
     id: 'life',
@@ -40,7 +46,24 @@ const CATEGORIES = {
     text: 'text-white',
     border: 'border-emerald-600',
     doneStyle: 'bg-emerald-50 text-emerald-200 border-emerald-100',
+    iconColor: 'text-emerald-600',
+    borderColor: 'border-emerald-300',
   },
+};
+
+const getCategoryIcon = (categoryId, size = 14) => {
+  switch (categoryId) {
+    case 'job':
+      return <Briefcase size={size} />;
+    case 'creative':
+      return <PenTool size={size} />;
+    case 'training':
+      return <Zap size={size} fill="currentColor" />;
+    case 'life':
+      return <Coffee size={size} />;
+    default:
+      return <Star size={size} />;
+  }
 };
 
 const generateStandardWeek = (weekId) => {
@@ -85,6 +108,35 @@ const generateStandardWeek = (weekId) => {
   return { calendar: blocks, bank: [], logs: {} };
 };
 
+const migrateLogs = (weeksData) => {
+  // Migrate old logs to include categoryId based on type
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    const migratedLogs = {};
+
+    if (weekData.logs) {
+      for (const [dayIndex, dayLogs] of Object.entries(weekData.logs)) {
+        migratedLogs[dayIndex] = dayLogs.map((log) => {
+          // If log already has categoryId, keep it
+          if (log.categoryId) return log;
+
+          // Migrate based on type
+          const categoryId = log.type === 'zap' ? 'training' : 'life';
+          return { ...log, categoryId };
+        });
+      }
+    }
+
+    migratedData[weekId] = {
+      ...weekData,
+      logs: migratedLogs,
+    };
+  }
+
+  return migratedData;
+};
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -92,7 +144,7 @@ const getInitialWeeksData = () => {
     try {
       const parsed = JSON.parse(stored);
       if (parsed && typeof parsed === 'object') {
-        return parsed;
+        return migrateLogs(parsed);
       }
     } catch (e) {
       console.warn('Kunde inte läsa sparad planering, laddar standardvecka.', e);
@@ -118,9 +170,11 @@ export default function ElasticPlanner() {
   const [addModal, setAddModal] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
   const [logModal, setLogModal] = useState(null);
+  const [logEntryModal, setLogEntryModal] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [microMenuOpen, setMicroMenuOpen] = useState(false);
   const [dropIndicator, setDropIndicator] = useState(null);
+  const [selectedMicroCategory, setSelectedMicroCategory] = useState('life');
 
   const [presets, setPresets] = useState([
     { label: 'Hantlar (Set)', category: 'training', icon: 'zap' },
@@ -155,6 +209,7 @@ export default function ElasticPlanner() {
         !e.target.closest('.bulk-menu') &&
         !e.target.closest('.note-modal') &&
         !e.target.closest('.log-modal') &&
+        !e.target.closest('.log-entry-modal') &&
         !e.target.closest('.settings-modal') &&
         !e.target.closest('.micro-menu')
       ) {
@@ -163,6 +218,7 @@ export default function ElasticPlanner() {
         setAddModal(null);
         setNoteModal(null);
         setLogModal(null);
+        setLogEntryModal(null);
         setSettingsOpen(false);
         setMicroMenuOpen(false);
       }
@@ -215,7 +271,7 @@ export default function ElasticPlanner() {
     return blocks;
   };
 
-  const addToLog = (day, text, specificTime = null) => {
+  const addToLog = (day, text, specificTime = null, categoryId = 'life') => {
     const currentLogs = logs[day] || [];
     let timestamp;
     if (specificTime) {
@@ -231,7 +287,9 @@ export default function ElasticPlanner() {
       id: Date.now(),
       text,
       timestamp,
-      type: text.toLowerCase().includes('hantlar') || text.toLowerCase().includes('abroller') ? 'zap' : 'star',
+      categoryId,
+      // Keep type for backwards compatibility during migration
+      type: categoryId === 'training' ? 'zap' : 'star',
     };
 
     const newLogs = { ...logs, [day]: [...currentLogs, newEntry] };
@@ -334,8 +392,8 @@ export default function ElasticPlanner() {
     setAddModal(null);
   };
 
-  const handleMicroAdd = (label) => {
-    addToLog(todayIndex, label);
+  const handleMicroAdd = (label, categoryId = 'life') => {
+    addToLog(todayIndex, label, null, categoryId);
     setMicroMenuOpen(false);
   };
 
@@ -652,41 +710,41 @@ export default function ElasticPlanner() {
                             if (action === 'edit') setEditingLabelId(block.id);
                             if (action === 'delete') deleteBlock(block.id);
                             if (action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
+                            if (action === 'log') setLogEntryModal({ dayIndex: block.day, categoryId: block.type, blockStart: block.start });
                           }}
                         />
                       ))}
 
-                    {groupedLogs.map((group) => (
-                      <div
-                        key={group.id}
-                        className="absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center"
-                        style={{ top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`, right: '0px' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLogModal({ dayIndex: dIndex });
-                        }}
-                      >
-                        <div className="bg-white rounded-full p-0.5 shadow-md border border-yellow-200 relative">
-                          {group.type === 'zap' ? (
-                            <Zap size={14} className="text-yellow-500" fill="currentColor" />
-                          ) : (
-                            <Star size={14} className="text-yellow-500" fill="currentColor" />
-                          )}
-                          {group.count > 1 && (
-                            <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">
-                              {group.count}
-                            </div>
-                          )}
+                    {groupedLogs.map((group) => {
+                      const category = CATEGORIES[group.categoryId] || CATEGORIES.life;
+                      return (
+                        <div
+                          key={group.id}
+                          className="absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center"
+                          style={{ top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`, right: '0px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLogModal({ dayIndex: dIndex });
+                          }}
+                        >
+                          <div className={`bg-white rounded-full p-0.5 shadow-md border relative ${category.borderColor}`}>
+                            <div className={category.iconColor}>{getCategoryIcon(group.categoryId, 14)}</div>
+                            {group.count > 1 && (
+                              <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">
+                                {group.count}
+                              </div>
+                            )}
+                          </div>
+                          <div className="absolute right-full top-0 mr-2 bg-black/90 text-white text-[10px] p-2 rounded w-max opacity-0 group-hover/icon:opacity-100 pointer-events-none z-[70] shadow-xl">
+                            <ul className="list-disc pl-3">
+                              {group.items.map((item, idx) => (
+                                <li key={idx}>{item.text}</li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
-                        <div className="absolute right-full top-0 mr-2 bg-black/90 text-white text-[10px] p-2 rounded w-max opacity-0 group-hover/icon:opacity-100 pointer-events-none z-[70] shadow-xl">
-                          <ul className="list-disc pl-3">
-                            {group.items.map((item, idx) => (
-                              <li key={idx}>{item.text}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -725,24 +783,64 @@ export default function ElasticPlanner() {
                 </button>
 
                 {microMenuOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl p-2 w-48 z-[100] animate-in slide-in-from-bottom-2 border border-zinc-200">
+                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl p-2 w-56 z-[100] animate-in slide-in-from-bottom-2 border border-zinc-200">
                     <div className="flex justify-between items-center mb-2 px-2 border-b border-zinc-100 pb-1">
                       <h4 className="text-[10px] font-bold uppercase text-zinc-400">Logga nu ({DAYS[todayIndex]})</h4>
                       <button onClick={() => setSettingsOpen(true)} className="text-zinc-300 hover:text-zinc-500">
                         <Settings size={12} />
                       </button>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      {presets.map((preset, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleMicroAdd(preset.label)}
-                          className="text-left px-2 py-1.5 hover:bg-yellow-50 hover:text-yellow-700 rounded text-xs font-bold flex items-center gap-2 transition-colors"
-                        >
-                          {preset.icon === 'zap' ? <Zap size={12} /> : <Star size={12} />}
-                          {preset.label}
+                    <div className="flex flex-col gap-1 mb-3">
+                      {presets.map((preset, i) => {
+                        const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => handleMicroAdd(preset.label, preset.category)}
+                            className="text-left px-2 py-1.5 hover:bg-zinc-50 rounded text-xs font-bold flex items-center gap-2 transition-colors"
+                          >
+                            <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-zinc-100 pt-2">
+                      <div className="flex gap-1 mb-2 px-2">
+                        {Object.values(CATEGORIES).map((cat) => (
+                          <button
+                            key={cat.id}
+                            onClick={() => setSelectedMicroCategory(cat.id)}
+                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                              selectedMicroCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                            }`}
+                            title={cat.label}
+                          >
+                            {getCategoryIcon(cat.id, 12)}
+                          </button>
+                        ))}
+                      </div>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const val = e.target.elements.microInput.value;
+                          if (val) {
+                            handleMicroAdd(val, selectedMicroCategory);
+                            e.target.reset();
+                          }
+                        }}
+                        className="flex gap-1"
+                      >
+                        <input
+                          name="microInput"
+                          type="text"
+                          placeholder="Egen aktivitet..."
+                          className="flex-grow bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
+                        />
+                        <button type="submit" className="bg-zinc-900 text-white px-2 py-1 rounded text-xs hover:bg-black">
+                          <Plus size={14} />
                         </button>
-                      ))}
+                      </form>
                     </div>
                   </div>
                 )}
@@ -853,24 +951,27 @@ export default function ElasticPlanner() {
                 <ul className="space-y-2">
                   {(logs[logModal.dayIndex] || [])
                     .sort((a, b) => a.timestamp - b.timestamp)
-                    .map((log) => (
-                      <li key={log.id} className="flex justify-between items-center p-2 bg-zinc-50 rounded border border-zinc-100 group">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-zinc-800">{log.text}</span>
-                          <span className="text-[10px] text-zinc-400 font-mono">
-                            {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60)
-                              .toString()
-                              .padStart(2, '0')}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => removeFromLog(logModal.dayIndex, log.id)}
-                          className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </li>
-                    ))}
+                    .map((log) => {
+                      const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
+                      return (
+                        <li key={log.id} className={`flex justify-between items-center p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-zinc-800">{log.text}</span>
+                            <span className="text-[10px] text-zinc-400 font-mono">
+                              {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60)
+                                .toString()
+                                .padStart(2, '0')}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => removeFromLog(logModal.dayIndex, log.id)}
+                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </li>
+                      );
+                    })}
                 </ul>
               )}
             </div>
@@ -878,15 +979,19 @@ export default function ElasticPlanner() {
             <div className="p-4 bg-zinc-50 border-t border-zinc-100">
               <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h4>
               <div className="flex flex-wrap gap-2">
-                {presets.map((preset, i) => (
-                  <button
-                    key={i}
-                    onClick={() => addToLog(logModal.dayIndex, preset.label)}
-                    className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
-                  >
-                    {preset.icon === 'zap' ? <Zap size={10} /> : <Star size={10} />} {preset.label}
-                  </button>
-                ))}
+                {presets.map((preset, i) => {
+                  const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => addToLog(logModal.dayIndex, preset.label, null, preset.category)}
+                      className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
+                    >
+                      <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
 
               <form
@@ -895,7 +1000,7 @@ export default function ElasticPlanner() {
                   e.preventDefault();
                   const val = e.target.elements.logInput.value;
                   if (val) {
-                    addToLog(logModal.dayIndex, val);
+                    addToLog(logModal.dayIndex, val, null, 'life');
                     e.target.reset();
                   }
                 }}
@@ -911,6 +1016,50 @@ export default function ElasticPlanner() {
                 </button>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {logEntryModal && (
+        <div className="log-entry-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogEntryModal(null)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className={`p-4 border-b flex justify-between items-center ${CATEGORIES[logEntryModal.categoryId]?.bg || 'bg-zinc-100'} ${CATEGORIES[logEntryModal.categoryId]?.text || 'text-zinc-900'}`}>
+              <div className="flex items-center gap-2">
+                {getCategoryIcon(logEntryModal.categoryId, 18)}
+                <h3 className="text-lg font-bold uppercase tracking-tight">Logga aktivitet</h3>
+              </div>
+              <button onClick={() => setLogEntryModal(null)} className="hover:opacity-70">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              className="p-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = e.target.elements.logEntryInput.value;
+                if (val) {
+                  addToLog(logEntryModal.dayIndex, val, logEntryModal.blockStart, logEntryModal.categoryId);
+                  setLogEntryModal(null);
+                }
+              }}
+            >
+              <input
+                autoFocus
+                name="logEntryInput"
+                type="text"
+                placeholder={`Vad gjorde du i ${CATEGORIES[logEntryModal.categoryId]?.label || 'denna kategori'}?`}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mb-3"
+              />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setLogEntryModal(null)} className="px-4 py-2 text-sm font-bold text-zinc-600 hover:text-zinc-900">
+                  Avbryt
+                </button>
+                <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black">
+                  Logga
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1106,6 +1255,16 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
           >
             <AlignLeft size={12} />
             {block.description && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-blue-500 rounded-full" />}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction('log');
+            }}
+            className="p-1 hover:bg-white/20 rounded text-yellow-400"
+            title="Logga aktivitet"
+          >
+            <Plus size={12} />
           </button>
           <button
             onClick={(e) => {
