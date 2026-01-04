@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -172,6 +172,7 @@ export default function ElasticPlanner() {
   const [logModal, setLogModal] = useState(null);
   const [logEntryModal, setLogEntryModal] = useState(null);
   const [editingLogId, setEditingLogId] = useState(null);
+  const [editingLogTime, setEditingLogTime] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [microMenuOpen, setMicroMenuOpen] = useState(false);
   const [dropIndicator, setDropIndicator] = useState(null);
@@ -225,6 +226,7 @@ export default function ElasticPlanner() {
         setSettingsOpen(false);
         setMicroMenuOpen(false);
         setEditingLogId(null);
+        setEditingLogTime(null);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -344,6 +346,16 @@ export default function ElasticPlanner() {
     const newLogs = { ...logs, [day]: newDayLogs };
     updateCurrentWeek(calendar, bank, newLogs);
     setEditingLogId(null);
+  };
+
+  const updateLogTime = (day, entryId, newTime) => {
+    const currentLogs = logs[day] || [];
+    const newDayLogs = currentLogs.map((log) =>
+      log.id === entryId ? { ...log, timestamp: newTime } : log
+    );
+    const newLogs = { ...logs, [day]: newDayLogs };
+    updateCurrentWeek(calendar, bank, newLogs);
+    setEditingLogTime(null);
   };
 
   const handleResizeStart = (e, block) => {
@@ -568,6 +580,16 @@ export default function ElasticPlanner() {
     .filter((b) => b.type === 'job')
     .reduce((acc, b) => acc + b.duration, 0);
 
+  // Count logs per category for the week
+  const weekLogs = Object.values(logs).flat();
+  const logsByCategory = {
+    training: weekLogs.filter((l) => l.categoryId === 'training').length,
+    job: weekLogs.filter((l) => l.categoryId === 'job').length,
+    creative: weekLogs.filter((l) => l.categoryId === 'creative').length,
+    life: weekLogs.filter((l) => l.categoryId === 'life').length,
+  };
+  const totalWeekLogs = weekLogs.length;
+
   return (
     <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
       <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-50">
@@ -610,9 +632,25 @@ export default function ElasticPlanner() {
               <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
             </div>
           </div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 items-center">
             <StatPill label="Bok" current={doneBok} total={totalBok} unit="h" />
             <StatPill label="Jobb" current={doneJob} total={totalJob} unit="h" target={24} warnBelowTarget />
+            {totalWeekLogs > 0 && (
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+                  Loggat
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-black tracking-tighter text-yellow-600">{totalWeekLogs}</span>
+                  <div className="flex gap-1 text-[9px]">
+                    {logsByCategory.training > 0 && <span className="text-red-600">⚡{logsByCategory.training}</span>}
+                    {logsByCategory.job > 0 && <span className="text-blue-600">💼{logsByCategory.job}</span>}
+                    {logsByCategory.creative > 0 && <span className="text-zinc-900">✏️{logsByCategory.creative}</span>}
+                    {logsByCategory.life > 0 && <span className="text-emerald-600">☕{logsByCategory.life}</span>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -1007,6 +1045,9 @@ export default function ElasticPlanner() {
                     .map((log) => {
                       const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
                       const isEditing = editingLogId === log.id;
+                      const isEditingTime = editingLogTime === log.id;
+                      const hours = Math.floor(log.timestamp);
+                      const minutes = Math.round((log.timestamp % 1) * 60);
                       return (
                         <li key={log.id} className={`flex flex-col p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
                           <div className="flex justify-between items-center">
@@ -1015,11 +1056,49 @@ export default function ElasticPlanner() {
                               onClick={() => setEditingLogId(isEditing ? null : log.id)}
                             >
                               <span className="text-sm font-medium text-zinc-800">{log.text}</span>
-                              <span className="text-[10px] text-zinc-400 font-mono">
-                                {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60)
-                                  .toString()
-                                  .padStart(2, '0')}
-                              </span>
+                              {isEditingTime ? (
+                                <div className="flex gap-1 items-center mt-1" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="number"
+                                    min="7"
+                                    max="23"
+                                    value={hours}
+                                    onChange={(e) => {
+                                      const newHours = Math.max(7, Math.min(23, parseInt(e.target.value) || 0));
+                                      updateLogTime(logModal.dayIndex, log.id, newHours + minutes / 60);
+                                    }}
+                                    className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
+                                  />
+                                  <span className="text-[10px] font-mono">:</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="59"
+                                    value={minutes.toString().padStart(2, '0')}
+                                    onChange={(e) => {
+                                      const newMinutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                                      updateLogTime(logModal.dayIndex, log.id, hours + newMinutes / 60);
+                                    }}
+                                    className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
+                                  />
+                                  <button
+                                    onClick={() => setEditingLogTime(null)}
+                                    className="ml-1 text-[10px] text-green-600 hover:text-green-800 font-bold"
+                                  >
+                                    ✓
+                                  </button>
+                                </div>
+                              ) : (
+                                <span
+                                  className="text-[10px] text-zinc-400 font-mono hover:text-blue-600 cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingLogTime(log.id);
+                                  }}
+                                >
+                                  {hours}:{minutes.toString().padStart(2, '0')}
+                                </span>
+                              )}
                             </div>
                             <button
                               onClick={() => removeFromLog(logModal.dayIndex, log.id)}
