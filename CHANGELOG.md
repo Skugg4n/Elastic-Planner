@@ -5,6 +5,34 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-01-05 19:47 UTC
+
+### Fixed
+- **ROLLBACK**: Reverted to v1.6.0 due to critical issues with v1.7.0/v1.7.1
+- Removed editable categories feature (caused blank page errors)
+- Removed report sidebar redesign (deployment issues)
+- App now stable and functional again
+
+### Technical
+- **Why**: v1.7.0 introduced breaking changes that caused blank white pages in production
+- **Solution**: Complete rollback to last known stable version (v1.6.0)
+- **Impact**: All v1.6.0 features working correctly, v1.7.x features postponed for proper testing
+
+## [1.6.0] - 2026-01-03
+
+### Added
+- Comprehensive reporting dashboard with category-based activity logging
+- Time-based activity filtering (today, this week, this month, all time)
+- Project-based activity grouping with detailed breakdowns
+- Export functionality for activity reports
+- Activity statistics: total hours, activity count, project count
+- Category-specific filtering in reports
+
+### Technical
+- **Why**: Need to track and analyze time spent across projects and categories
+- **Solution**: Built comprehensive reporting system with flexible filters
+- **Impact**: Users can now analyze productivity patterns and time allocation
+
 ## [1.0.3] - 2026-01-03 07:45 UTC
 
 ### Added
