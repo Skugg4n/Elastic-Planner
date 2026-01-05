@@ -5,6 +5,20 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-01-05 14:29 UTC
+
+### Fixed
+- **CRITICAL**: Fixed blank white page error caused by missing category references
+  - Replaced remaining `CATEGORIES` constant references with `categories` state variable
+  - Fixed 4 instances in micro-menu and settings modal that were missed in v1.7.0
+  - App now loads correctly after merge to main
+
+### Technical
+- **Why**: After merging v1.7.0, the app showed blank white page with "ReferenceError: categories is not defined"
+- **Solution**: Found and replaced all remaining `Object.values(CATEGORIES)` with `Object.values(categories)`
+- **Root cause**: Incomplete migration from constant to state variable in v1.7.0
+- **Impact**: App is now functional again, critical bug fix for production use
+
 ## [1.7.0] - 2026-01-05 14:19 UTC
 
 ### Added
