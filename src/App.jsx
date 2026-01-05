@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.3';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -16,7 +16,7 @@ const CATEGORIES = {
     bg: 'bg-zinc-900',
     text: 'text-white',
     border: 'border-zinc-900',
-    doneStyle: 'bg-zinc-100 text-zinc-300 border-zinc-200',
+    doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75',
     iconColor: 'text-zinc-900',
     borderColor: 'border-zinc-900',
   },
@@ -26,7 +26,7 @@ const CATEGORIES = {
     bg: 'bg-zinc-200',
     text: 'text-zinc-900',
     border: 'border-zinc-300',
-    doneStyle: 'bg-zinc-50 text-zinc-300 border-zinc-100',
+    doneStyle: 'bg-zinc-50 text-zinc-500 border-zinc-200 line-through opacity-75',
     iconColor: 'text-blue-600',
     borderColor: 'border-blue-300',
   },
@@ -36,7 +36,7 @@ const CATEGORIES = {
     bg: 'bg-red-600',
     text: 'text-white',
     border: 'border-red-700',
-    doneStyle: 'bg-red-50 text-red-200 border-red-100',
+    doneStyle: 'bg-red-50 text-red-600 border-red-200 line-through opacity-75',
     iconColor: 'text-red-600',
     borderColor: 'border-red-300',
   },
@@ -46,7 +46,7 @@ const CATEGORIES = {
     bg: 'bg-emerald-500',
     text: 'text-white',
     border: 'border-emerald-600',
-    doneStyle: 'bg-emerald-50 text-emerald-200 border-emerald-100',
+    doneStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-75',
     iconColor: 'text-emerald-600',
     borderColor: 'border-emerald-300',
   },
@@ -1760,32 +1760,32 @@ export default function ElasticPlanner() {
         </div>
       )}
 
-      {/* Log Sidebar */}
+      {/* Log Sidebar - Modernized */}
       <div
-        className={`log-sidebar fixed top-0 right-0 h-full w-[380px] bg-white shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`log-sidebar fixed top-0 right-0 h-full w-[380px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           logSidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {/* Header */}
-        <div className="flex-none bg-yellow-50 p-4 border-b border-yellow-100 flex justify-between items-center">
+        {/* Header - Modern Dark */}
+        <div className="flex-none bg-zinc-900 p-5 border-b border-zinc-800 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Zap className="text-yellow-600" size={18} fill="currentColor" />
-            <h3 className="text-lg font-bold text-yellow-900 uppercase tracking-tight">
-              Logg: {selectedLogDay !== null ? DAYS[selectedLogDay] : ''}
+            <MessageSquare className="text-white" size={20} />
+            <h3 className="text-lg font-bold text-white tracking-tight">
+              {selectedLogDay !== null ? DAYS[selectedLogDay] : ''}
             </h3>
           </div>
-          <button onClick={() => setLogSidebarOpen(false)} className="text-yellow-700 hover:text-yellow-900 transition-colors">
+          <button onClick={() => setLogSidebarOpen(false)} className="text-zinc-400 hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        {/* Log List */}
-        <div className="flex-grow overflow-y-auto p-4 bg-white">
+        {/* Log List - Cleaner spacing */}
+        <div className="flex-grow overflow-y-auto p-4 bg-zinc-50">
           {selectedLogDay !== null && (logs[selectedLogDay] || []).length === 0 ? (
-            <div className="text-center text-zinc-400 italic py-8">Inga aktiviteter loggade än.</div>
+            <div className="text-center text-zinc-400 italic py-12 text-sm">Inga aktiviteter loggade</div>
           ) : (
             selectedLogDay !== null && (
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {(logs[selectedLogDay] || [])
                   .sort((a, b) => a.timestamp - b.timestamp)
                   .map((log) => {
@@ -1795,22 +1795,22 @@ export default function ElasticPlanner() {
                     const hours = Math.floor(log.timestamp);
                     const minutes = Math.round((log.timestamp % 1) * 60);
                     return (
-                      <li key={log.id} className={`flex flex-col p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
-                        <div className="flex justify-between items-center">
+                      <li key={log.id} className={`flex flex-col p-3 bg-white rounded-lg shadow-sm border-l-4 ${logCategory.border} group hover:shadow-md transition-shadow`}>
+                        <div className="flex justify-between items-start gap-2">
                           <div
-                            className="flex flex-col flex-grow cursor-pointer"
+                            className="flex flex-col flex-grow cursor-pointer min-w-0"
                             onClick={() => setEditingLogId(isEditing ? null : log.id)}
                           >
-                            <span className="text-sm font-medium text-zinc-800">{log.text}</span>
+                            <span className="text-sm font-semibold text-zinc-900 leading-tight">{log.text}</span>
                             {(log.projectName || log.taskName) && (
-                              <span className="text-[10px] text-zinc-500 mt-0.5">
+                              <span className="text-[11px] text-zinc-500 mt-1">
                                 {log.projectName && log.taskName
                                   ? `${log.projectName} / ${log.taskName}`
                                   : log.projectName || log.taskName}
                               </span>
                             )}
                             {isEditingTime ? (
-                              <div className="flex gap-1 items-center mt-1" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex gap-1 items-center mt-1.5" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="number"
                                   min="7"
@@ -1820,9 +1820,9 @@ export default function ElasticPlanner() {
                                     const newHours = Math.max(7, Math.min(23, parseInt(e.target.value) || 0));
                                     updateLogTime(selectedLogDay, log.id, newHours + minutes / 60);
                                   }}
-                                  className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
+                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-zinc-50 border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
                                 />
-                                <span className="text-[10px] font-mono">:</span>
+                                <span className="text-xs font-mono text-zinc-400">:</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -1832,18 +1832,18 @@ export default function ElasticPlanner() {
                                     const newMinutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
                                     updateLogTime(selectedLogDay, log.id, hours + newMinutes / 60);
                                   }}
-                                  className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
+                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-zinc-50 border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
                                 />
                                 <button
                                   onClick={() => setEditingLogTime(null)}
-                                  className="ml-1 text-[10px] text-green-600 hover:text-green-800 font-bold"
+                                  className="ml-1 text-xs text-green-600 hover:text-green-800 font-bold"
                                 >
                                   ✓
                                 </button>
                               </div>
                             ) : (
                               <span
-                                className="text-[10px] text-zinc-400 font-mono hover:text-blue-600 cursor-pointer"
+                                className="text-[11px] text-zinc-500 font-mono hover:text-zinc-900 cursor-pointer inline-block mt-1.5 bg-zinc-100 px-2 py-0.5 rounded"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setEditingLogTime(log.id);
@@ -1855,23 +1855,23 @@ export default function ElasticPlanner() {
                           </div>
                           <button
                             onClick={() => removeFromLog(selectedLogDay, log.id)}
-                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={16} />
                           </button>
                         </div>
                         {isEditing && (
-                          <div className="flex gap-1 mt-2 pt-2 border-t border-zinc-200">
+                          <div className="flex gap-1.5 mt-3 pt-3 border-t border-zinc-100">
                             {Object.values(CATEGORIES).map((cat) => (
                               <button
                                 key={cat.id}
                                 onClick={() => updateLogCategory(selectedLogDay, log.id, cat.id)}
-                                className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
                                   log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
                                 }`}
                                 title={cat.label}
                               >
-                                {getCategoryIcon(cat.id, 12)}
+                                {getCategoryIcon(cat.id, 13)}
                               </button>
                             ))}
                           </div>
@@ -1884,18 +1884,18 @@ export default function ElasticPlanner() {
           )}
         </div>
 
-        {/* Footer - Add New Log */}
+        {/* Footer - Add New Log - Modernized */}
         {selectedLogDay !== null && (
-          <div className="flex-none p-4 bg-zinc-50 border-t border-zinc-100">
-            <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h4>
-            <div className="flex flex-wrap gap-2">
+          <div className="flex-none p-4 bg-white border-t border-zinc-200">
+            <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-wide">Snabbval</h4>
+            <div className="flex flex-wrap gap-2 mb-4">
               {presets.map((preset, i) => {
                 const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
                 return (
                   <button
                     key={i}
                     onClick={() => addToLog(selectedLogDay, preset.label, null, preset.category)}
-                    className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
+                    className="bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1.5 items-center"
                   >
                     <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
                     {preset.label}
@@ -1904,43 +1904,41 @@ export default function ElasticPlanner() {
               })}
             </div>
 
-            <div className="mt-4">
-              <div className="flex gap-1 mb-2">
-                {Object.values(CATEGORIES).map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedLogCategory(cat.id)}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                      selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
-                    }`}
-                    title={cat.label}
-                  >
-                    {getCategoryIcon(cat.id, 14)}
-                  </button>
-                ))}
-              </div>
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const val = e.target.elements.logInput.value;
-                  if (val) {
-                    addToLog(selectedLogDay, val, null, selectedLogCategory);
-                    e.target.reset();
-                  }
-                }}
-              >
-                <input
-                  name="logInput"
-                  type="text"
-                  placeholder="Eget..."
-                  className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                />
-                <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black">
-                  <Plus size={16} />
+            <div className="flex gap-2 mb-3">
+              {Object.values(CATEGORIES).map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedLogCategory(cat.id)}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                    selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-zinc-900` : `${cat.bg} ${cat.text} opacity-50 hover:opacity-100`
+                  }`}
+                  title={cat.label}
+                >
+                  {getCategoryIcon(cat.id, 15)}
                 </button>
-              </form>
+              ))}
             </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = e.target.elements.logInput.value;
+                if (val) {
+                  addToLog(selectedLogDay, val, null, selectedLogCategory);
+                  e.target.reset();
+                }
+              }}
+            >
+              <input
+                name="logInput"
+                type="text"
+                placeholder="Skriv aktivitet..."
+                className="flex-grow bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-900 focus:bg-white"
+              />
+              <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-black transition-colors shadow-sm">
+                <Plus size={18} />
+              </button>
+            </form>
           </div>
         )}
       </div>
