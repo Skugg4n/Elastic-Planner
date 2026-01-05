@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
 const LOCAL_STORAGE_KEY = 'elastic-planner-weeks';
 const CURRENT_WEEK_KEY = 'elastic-planner-current-week';
+const PROJECT_HISTORY_KEY = 'elastic-planner-project-history';
 
 const CATEGORIES = {
   creative: {
@@ -183,6 +184,36 @@ const migrateLogs = (weeksData) => {
   return migratedData;
 };
 
+const migrateToProjectTracking = (weeksData) => {
+  // v1.4.0 -> v1.5.0: Add projectName and taskName to blocks and logs
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    migratedData[weekId] = {
+      calendar: (weekData.calendar || []).map((block) => ({
+        ...block,
+        projectName: block.projectName || null,
+        taskName: block.taskName || null,
+      })),
+      bank: (weekData.bank || []).map((block) => ({
+        ...block,
+        projectName: block.projectName || null,
+        taskName: block.taskName || null,
+      })),
+      logs: Object.entries(weekData.logs || {}).reduce((acc, [day, dayLogs]) => {
+        acc[day] = dayLogs.map((log) => ({
+          ...log,
+          projectName: log.projectName || null,
+          taskName: log.taskName || null,
+        }));
+        return acc;
+      }, {}),
+    };
+  }
+
+  return migratedData;
+};
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -190,7 +221,10 @@ const getInitialWeeksData = () => {
     try {
       const parsed = JSON.parse(stored);
       if (parsed && typeof parsed === 'object') {
-        return migrateLogs(parsed);
+        // Apply migrations in sequence
+        let migrated = migrateLogs(parsed);
+        migrated = migrateToProjectTracking(migrated);
+        return migrated;
       }
     } catch (e) {
       console.warn('Kunde inte läsa sparad planering, laddar standardvecka.', e);
@@ -204,6 +238,258 @@ const getInitialWeekIndex = () => {
   const stored = Number(localStorage.getItem(CURRENT_WEEK_KEY));
   return Number.isFinite(stored) && stored > 0 ? stored : 1;
 };
+
+const getInitialProjectHistory = () => {
+  if (typeof window === 'undefined') {
+    return {
+      projects: { creative: {}, job: {}, training: {}, life: {} },
+      recentCombinations: [],
+    };
+  }
+
+  const stored = localStorage.getItem(PROJECT_HISTORY_KEY);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.warn('Kunde inte läsa projekthistorik');
+    }
+  }
+
+  return {
+    projects: { creative: {}, job: {}, training: {}, life: {} },
+    recentCombinations: [],
+  };
+};
+
+const saveProjectHistory = (history) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history));
+  }
+};
+
+const updateProjectHistoryRecord = (history, categoryId, projectName, taskName) => {
+  if (!projectName || !taskName) return history;
+
+  const newHistory = { ...history };
+
+  // Initialize category if needed
+  if (!newHistory.projects[categoryId]) {
+    newHistory.projects[categoryId] = {};
+  }
+
+  // Update or create project
+  if (!newHistory.projects[categoryId][projectName]) {
+    newHistory.projects[categoryId][projectName] = {
+      lastUsed: Date.now(),
+      usageCount: 1,
+      tasks: [taskName],
+    };
+  } else {
+    const project = newHistory.projects[categoryId][projectName];
+    project.lastUsed = Date.now();
+    project.usageCount = (project.usageCount || 0) + 1;
+    if (!project.tasks.includes(taskName)) {
+      project.tasks.push(taskName);
+    }
+  }
+
+  // Update recent combinations
+  const combo = { categoryId, projectName, taskName, lastUsed: Date.now() };
+  newHistory.recentCombinations = [
+    combo,
+    ...newHistory.recentCombinations.filter(
+      (c) => !(c.categoryId === categoryId && c.projectName === projectName && c.taskName === taskName)
+    ),
+  ].slice(0, 10); // Keep only last 10
+
+  saveProjectHistory(newHistory);
+  return newHistory;
+};
+
+const getProjectSuggestions = (history, categoryId, searchTerm) => {
+  if (!history.projects[categoryId]) return [];
+
+  const term = searchTerm.toLowerCase();
+  const projects = history.projects[categoryId];
+
+  return Object.entries(projects)
+    .filter(([name]) => name.toLowerCase().includes(term))
+    .map(([name, data]) => ({ name, usageCount: data.usageCount, lastUsed: data.lastUsed }))
+    .sort((a, b) => {
+      // Prefix matches score higher
+      const aPrefix = a.name.toLowerCase().startsWith(term) ? 1 : 0;
+      const bPrefix = b.name.toLowerCase().startsWith(term) ? 1 : 0;
+      if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+      // Then by usage count
+      return b.usageCount - a.usageCount;
+    })
+    .slice(0, 5);
+};
+
+const getTaskSuggestions = (history, categoryId, projectName, searchTerm) => {
+  if (!history.projects[categoryId] || !history.projects[categoryId][projectName]) return [];
+
+  const term = searchTerm.toLowerCase();
+  const tasks = history.projects[categoryId][projectName].tasks;
+
+  return tasks
+    .filter((task) => task.toLowerCase().includes(term))
+    .sort((a, b) => {
+      // Prefix matches score higher
+      const aPrefix = a.toLowerCase().startsWith(term) ? 1 : 0;
+      const bPrefix = b.toLowerCase().startsWith(term) ? 1 : 0;
+      if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+      return a.localeCompare(b);
+    })
+    .slice(0, 5);
+};
+
+const getRecentCombinations = (history, categoryId) => {
+  return history.recentCombinations
+    .filter((combo) => !categoryId || combo.categoryId === categoryId)
+    .slice(0, 10);
+};
+
+function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', projectHistory, onSave, onCancel }) {
+  const [projectName, setProjectName] = useState(initialProject);
+  const [taskName, setTaskName] = useState(initialTask);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
+
+  const projectInputRef = useRef(null);
+  const taskInputRef = useRef(null);
+
+  const projectSuggestions = getProjectSuggestions(projectHistory, categoryId, projectName);
+  const taskSuggestions = getTaskSuggestions(projectHistory, categoryId, projectName, taskName);
+  const recentCombos = getRecentCombinations(projectHistory, categoryId);
+
+  useEffect(() => {
+    projectInputRef.current?.focus();
+  }, []);
+
+  const handleSave = () => {
+    onSave(projectName.trim(), taskName.trim());
+  };
+
+  return (
+    <div className="project-task-input bg-white p-4 rounded-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      {/* Recent Combinations */}
+      {recentCombos.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Senaste 10</h4>
+          <div className="flex flex-wrap gap-2">
+            {recentCombos.map((combo, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setProjectName(combo.projectName);
+                  setTaskName(combo.taskName);
+                  taskInputRef.current?.focus();
+                }}
+                className="text-xs bg-zinc-100 hover:bg-zinc-200 px-2 py-1 rounded transition-colors"
+              >
+                {combo.projectName} / {combo.taskName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Project Name Input */}
+      <div className="relative mb-3">
+        <label className="block text-xs font-bold text-zinc-600 mb-1">Projekt</label>
+        <input
+          ref={projectInputRef}
+          type="text"
+          value={projectName}
+          onChange={(e) => {
+            setProjectName(e.target.value);
+            setShowProjectDropdown(true);
+          }}
+          onFocus={() => setShowProjectDropdown(true)}
+          onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
+          placeholder="t.ex. Tivoli 2"
+          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+        />
+        {showProjectDropdown && projectSuggestions.length > 0 && projectName && (
+          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+            {projectSuggestions.map((proj, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setProjectName(proj.name);
+                  setShowProjectDropdown(false);
+                  taskInputRef.current?.focus();
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex justify-between items-center"
+              >
+                <span>{proj.name}</span>
+                <span className="text-xs text-zinc-400">({proj.usageCount})</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Task Name Input */}
+      <div className="relative mb-4">
+        <label className="block text-xs font-bold text-zinc-600 mb-1">Uppgift</label>
+        <input
+          ref={taskInputRef}
+          type="text"
+          value={taskName}
+          onChange={(e) => {
+            setTaskName(e.target.value);
+            setShowTaskDropdown(true);
+          }}
+          onFocus={() => setShowTaskDropdown(true)}
+          onBlur={() => setTimeout(() => setShowTaskDropdown(false), 200)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleSave();
+            }
+          }}
+          placeholder="t.ex. Skiss"
+          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+        />
+        {showTaskDropdown && taskSuggestions.length > 0 && taskName && (
+          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+            {taskSuggestions.map((task, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setTaskName(task);
+                  setShowTaskDropdown(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50"
+              >
+                {task}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 text-sm font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
+        >
+          Avbryt
+        </button>
+        <button
+          onClick={handleSave}
+          className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+        >
+          Spara
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ElasticPlanner() {
   const [currentWeekIndex, setCurrentWeekIndex] = useState(getInitialWeekIndex);
@@ -236,6 +522,8 @@ export default function ElasticPlanner() {
     { label: 'Stretch (Kort)', category: 'life', icon: 'star' },
     { label: 'Promenad', category: 'life', icon: 'star' },
   ]);
+
+  const [projectHistory, setProjectHistory] = useState(getInitialProjectHistory);
 
   const fileInputRef = useRef(null);
   const todayIndex = (new Date().getDay() + 6) % 7;
@@ -350,7 +638,7 @@ export default function ElasticPlanner() {
     return blocks;
   };
 
-  const addToLog = (day, text, specificTime = null, categoryId = 'life') => {
+  const addToLog = (day, text, specificTime = null, categoryId = 'life', projectName = null, taskName = null) => {
     const currentLogs = logs[day] || [];
     let timestamp;
     if (specificTime) {
@@ -369,10 +657,18 @@ export default function ElasticPlanner() {
       categoryId,
       // Keep type for backwards compatibility during migration
       type: categoryId === 'training' ? 'zap' : 'star',
+      projectName: projectName || null,
+      taskName: taskName || null,
     };
 
     const newLogs = { ...logs, [day]: [...currentLogs, newEntry] };
     updateCurrentWeek(calendar, bank, newLogs);
+
+    // Update project history if project info provided
+    if (projectName && taskName) {
+      const updatedHistory = updateProjectHistoryRecord(projectHistory, categoryId, projectName, taskName);
+      setProjectHistory(updatedHistory);
+    }
   };
 
   const removeFromLog = (day, entryId) => {
@@ -473,7 +769,7 @@ export default function ElasticPlanner() {
     setSelectedBlockIds([]);
   };
 
-  const addNewBlock = (type) => {
+  const addNewBlock = (type, projectName = null, taskName = null) => {
     if (!addModal) return;
     const { day, hour } = addModal;
     const duration = 1;
@@ -486,10 +782,19 @@ export default function ElasticPlanner() {
       label: CATEGORIES[type].label,
       status: 'planned',
       description: '',
+      projectName: projectName || null,
+      taskName: taskName || null,
     };
 
     const newCalendar = [...calendar, newBlock];
     updateCurrentWeek(resolveCollisions(newCalendar, newBlock), bank, logs);
+
+    // Update project history if project info provided
+    if (projectName && taskName) {
+      const updatedHistory = updateProjectHistoryRecord(projectHistory, type, projectName, taskName);
+      setProjectHistory(updatedHistory);
+    }
+
     setAddModal(null);
   };
 
@@ -1040,15 +1345,33 @@ export default function ElasticPlanner() {
 
       {addModal && (
         <div className="add-modal fixed inset-0 bg-black/10 flex items-center justify-center z-[100]" onClick={() => setAddModal(null)}>
-          <div className="bg-white p-3 rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="grid grid-cols-2 gap-2 w-48">
-              {Object.values(CATEGORIES).map((cat) => (
-                <button key={cat.id} onClick={() => addNewBlock(cat.id)} className={`p-2 rounded text-xs font-bold text-left ${cat.bg} ${cat.text}`}>
-                  {cat.label}
-                </button>
-              ))}
+          {!addModal.selectedCategory ? (
+            <div className="bg-white p-3 rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-xs font-bold uppercase text-zinc-500 mb-2">Välj kategori</h3>
+              <div className="grid grid-cols-2 gap-2 w-48">
+                {Object.values(CATEGORIES).map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
+                    className={`p-2 rounded text-xs font-bold text-left ${cat.bg} ${cat.text}`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div onClick={(e) => e.stopPropagation()}>
+              <ProjectTaskInput
+                categoryId={addModal.selectedCategory}
+                projectHistory={projectHistory}
+                onSave={(projectName, taskName) => {
+                  addNewBlock(addModal.selectedCategory, projectName, taskName);
+                }}
+                onCancel={() => setAddModal(null)}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1124,6 +1447,13 @@ export default function ElasticPlanner() {
                             onClick={() => setEditingLogId(isEditing ? null : log.id)}
                           >
                             <span className="text-sm font-medium text-zinc-800">{log.text}</span>
+                            {(log.projectName || log.taskName) && (
+                              <span className="text-[10px] text-zinc-500 mt-0.5">
+                                {log.projectName && log.taskName
+                                  ? `${log.projectName} / ${log.taskName}`
+                                  : log.projectName || log.taskName}
+                              </span>
+                            )}
                             {isEditingTime ? (
                               <div className="flex gap-1 items-center mt-1" onClick={(e) => e.stopPropagation()}>
                                 <input
@@ -1438,6 +1768,13 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
                       {block.label}
                     </span>
                   </div>
+                  {(block.projectName || block.taskName) && (
+                    <span className="text-[9px] opacity-50 mt-0.5 truncate">
+                      {block.projectName && block.taskName
+                        ? `${block.projectName} / ${block.taskName}`
+                        : block.projectName || block.taskName}
+                    </span>
+                  )}
                   {block.duration >= 0.5 && <span className="text-[9px] opacity-60 font-mono mt-0.5">{block.duration}h</span>}
                 </div>
               )}
