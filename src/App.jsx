@@ -169,7 +169,8 @@ export default function ElasticPlanner() {
   const [editingLabelId, setEditingLabelId] = useState(null);
   const [addModal, setAddModal] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
-  const [logModal, setLogModal] = useState(null);
+  const [logSidebarOpen, setLogSidebarOpen] = useState(false);
+  const [selectedLogDay, setSelectedLogDay] = useState(null);
   const [logEntryModal, setLogEntryModal] = useState(null);
   const [editingLogId, setEditingLogId] = useState(null);
   const [editingLogTime, setEditingLogTime] = useState(null);
@@ -219,7 +220,7 @@ export default function ElasticPlanner() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setLogModal(null);
+        setLogSidebarOpen(false);
         setLogEntryModal(null);
         setNoteModal(null);
         setAddModal(null);
@@ -241,7 +242,7 @@ export default function ElasticPlanner() {
         !e.target.closest('.add-modal') &&
         !e.target.closest('.bulk-menu') &&
         !e.target.closest('.note-modal') &&
-        !e.target.closest('.log-modal') &&
+        !e.target.closest('.log-sidebar') &&
         !e.target.closest('.log-entry-modal') &&
         !e.target.closest('.settings-modal') &&
         !e.target.closest('.micro-menu')
@@ -250,7 +251,6 @@ export default function ElasticPlanner() {
         setEditingLabelId(null);
         setAddModal(null);
         setNoteModal(null);
-        setLogModal(null);
         setLogEntryModal(null);
         setSettingsOpen(false);
         setMicroMenuOpen(false);
@@ -713,7 +713,10 @@ export default function ElasticPlanner() {
                         )}
                       </div>
                       <button
-                        onClick={() => setLogModal({ dayIndex: dIndex })}
+                        onClick={() => {
+                          setSelectedLogDay(dIndex);
+                          setLogSidebarOpen(true);
+                        }}
                         className={`p-0.5 rounded transition-all hover:scale-110 ${
                           logCount > 0 ? 'text-yellow-500 font-bold' : 'text-zinc-300 hover:text-zinc-500'
                         }`}
@@ -815,7 +818,8 @@ export default function ElasticPlanner() {
                           style={{ top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`, right: '0px' }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setLogModal({ dayIndex: dIndex });
+                            setSelectedLogDay(dIndex);
+                            setLogSidebarOpen(true);
                           }}
                         >
                           <div className={`bg-white rounded-full p-0.5 shadow-md border relative ${category.borderColor}`}>
@@ -1022,172 +1026,190 @@ export default function ElasticPlanner() {
         </div>
       )}
 
-      {logModal && (
-        <div className="log-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogModal(null)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-yellow-50 p-4 border-b border-yellow-100 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Zap className="text-yellow-600" size={18} fill="currentColor" />
-                <h3 className="text-lg font-bold text-yellow-900 uppercase tracking-tight">Logg: {DAYS[logModal.dayIndex]}</h3>
-              </div>
-              <button onClick={() => setLogModal(null)} className="text-yellow-700 hover:text-yellow-900">
-                <X size={20} />
-              </button>
-            </div>
+      {/* Log Sidebar */}
+      <div
+        className={`log-sidebar fixed top-0 right-0 h-full w-[380px] bg-white shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+          logSidebarOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex-none bg-yellow-50 p-4 border-b border-yellow-100 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Zap className="text-yellow-600" size={18} fill="currentColor" />
+            <h3 className="text-lg font-bold text-yellow-900 uppercase tracking-tight">
+              Logg: {selectedLogDay !== null ? DAYS[selectedLogDay] : ''}
+            </h3>
+          </div>
+          <button onClick={() => setLogSidebarOpen(false)} className="text-yellow-700 hover:text-yellow-900 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
 
-            <div className="p-4 bg-white min-h-[200px] max-h-[400px] overflow-y-auto">
-              {(logs[logModal.dayIndex] || []).length === 0 ? (
-                <div className="text-center text-zinc-400 italic py-8">Inga aktiviteter loggade än.</div>
-              ) : (
-                <ul className="space-y-2">
-                  {(logs[logModal.dayIndex] || [])
-                    .sort((a, b) => a.timestamp - b.timestamp)
-                    .map((log) => {
-                      const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
-                      const isEditing = editingLogId === log.id;
-                      const isEditingTime = editingLogTime === log.id;
-                      const hours = Math.floor(log.timestamp);
-                      const minutes = Math.round((log.timestamp % 1) * 60);
-                      return (
-                        <li key={log.id} className={`flex flex-col p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
-                          <div className="flex justify-between items-center">
-                            <div
-                              className="flex flex-col flex-grow cursor-pointer"
-                              onClick={() => setEditingLogId(isEditing ? null : log.id)}
-                            >
-                              <span className="text-sm font-medium text-zinc-800">{log.text}</span>
-                              {isEditingTime ? (
-                                <div className="flex gap-1 items-center mt-1" onClick={(e) => e.stopPropagation()}>
-                                  <input
-                                    type="number"
-                                    min="7"
-                                    max="23"
-                                    value={hours}
-                                    onChange={(e) => {
-                                      const newHours = Math.max(7, Math.min(23, parseInt(e.target.value) || 0));
-                                      updateLogTime(logModal.dayIndex, log.id, newHours + minutes / 60);
-                                    }}
-                                    className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
-                                  />
-                                  <span className="text-[10px] font-mono">:</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="59"
-                                    value={minutes.toString().padStart(2, '0')}
-                                    onChange={(e) => {
-                                      const newMinutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
-                                      updateLogTime(logModal.dayIndex, log.id, hours + newMinutes / 60);
-                                    }}
-                                    className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
-                                  />
-                                  <button
-                                    onClick={() => setEditingLogTime(null)}
-                                    className="ml-1 text-[10px] text-green-600 hover:text-green-800 font-bold"
-                                  >
-                                    ✓
-                                  </button>
-                                </div>
-                              ) : (
-                                <span
-                                  className="text-[10px] text-zinc-400 font-mono hover:text-blue-600 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingLogTime(log.id);
+        {/* Log List */}
+        <div className="flex-grow overflow-y-auto p-4 bg-white">
+          {selectedLogDay !== null && (logs[selectedLogDay] || []).length === 0 ? (
+            <div className="text-center text-zinc-400 italic py-8">Inga aktiviteter loggade än.</div>
+          ) : (
+            selectedLogDay !== null && (
+              <ul className="space-y-2">
+                {(logs[selectedLogDay] || [])
+                  .sort((a, b) => a.timestamp - b.timestamp)
+                  .map((log) => {
+                    const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
+                    const isEditing = editingLogId === log.id;
+                    const isEditingTime = editingLogTime === log.id;
+                    const hours = Math.floor(log.timestamp);
+                    const minutes = Math.round((log.timestamp % 1) * 60);
+                    return (
+                      <li key={log.id} className={`flex flex-col p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
+                        <div className="flex justify-between items-center">
+                          <div
+                            className="flex flex-col flex-grow cursor-pointer"
+                            onClick={() => setEditingLogId(isEditing ? null : log.id)}
+                          >
+                            <span className="text-sm font-medium text-zinc-800">{log.text}</span>
+                            {isEditingTime ? (
+                              <div className="flex gap-1 items-center mt-1" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="number"
+                                  min="7"
+                                  max="23"
+                                  value={hours}
+                                  onChange={(e) => {
+                                    const newHours = Math.max(7, Math.min(23, parseInt(e.target.value) || 0));
+                                    updateLogTime(selectedLogDay, log.id, newHours + minutes / 60);
                                   }}
-                                >
-                                  {hours}:{minutes.toString().padStart(2, '0')}
-                                </span>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => removeFromLog(logModal.dayIndex, log.id)}
-                              className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                          {isEditing && (
-                            <div className="flex gap-1 mt-2 pt-2 border-t border-zinc-200">
-                              {Object.values(CATEGORIES).map((cat) => (
+                                  className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
+                                />
+                                <span className="text-[10px] font-mono">:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="59"
+                                  value={minutes.toString().padStart(2, '0')}
+                                  onChange={(e) => {
+                                    const newMinutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                                    updateLogTime(selectedLogDay, log.id, hours + newMinutes / 60);
+                                  }}
+                                  className="w-12 px-1 py-0.5 text-[10px] font-mono bg-white border border-zinc-300 rounded"
+                                />
                                 <button
-                                  key={cat.id}
-                                  onClick={() => updateLogCategory(logModal.dayIndex, log.id, cat.id)}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                                    log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
-                                  }`}
-                                  title={cat.label}
+                                  onClick={() => setEditingLogTime(null)}
+                                  className="ml-1 text-[10px] text-green-600 hover:text-green-800 font-bold"
                                 >
-                                  {getCategoryIcon(cat.id, 12)}
+                                  ✓
                                 </button>
-                              ))}
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
+                              </div>
+                            ) : (
+                              <span
+                                className="text-[10px] text-zinc-400 font-mono hover:text-blue-600 cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingLogTime(log.id);
+                                }}
+                              >
+                                {hours}:{minutes.toString().padStart(2, '0')}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => removeFromLog(selectedLogDay, log.id)}
+                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        {isEditing && (
+                          <div className="flex gap-1 mt-2 pt-2 border-t border-zinc-200">
+                            {Object.values(CATEGORIES).map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => updateLogCategory(selectedLogDay, log.id, cat.id)}
+                                className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                                  log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                                }`}
+                                title={cat.label}
+                              >
+                                {getCategoryIcon(cat.id, 12)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            )
+          )}
+        </div>
+
+        {/* Footer - Add New Log */}
+        {selectedLogDay !== null && (
+          <div className="flex-none p-4 bg-zinc-50 border-t border-zinc-100">
+            <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h4>
+            <div className="flex flex-wrap gap-2">
+              {presets.map((preset, i) => {
+                const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => addToLog(selectedLogDay, preset.label, null, preset.category)}
+                    className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="p-4 bg-zinc-50 border-t border-zinc-100">
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h4>
-              <div className="flex flex-wrap gap-2">
-                {presets.map((preset, i) => {
-                  const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => addToLog(logModal.dayIndex, preset.label, null, preset.category)}
-                      className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
-                    >
-                      <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4">
-                <div className="flex gap-1 mb-2">
-                  {Object.values(CATEGORIES).map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedLogCategory(cat.id)}
-                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                        selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
-                      }`}
-                      title={cat.label}
-                    >
-                      {getCategoryIcon(cat.id, 14)}
-                    </button>
-                  ))}
-                </div>
-                <form
-                  className="flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const val = e.target.elements.logInput.value;
-                    if (val) {
-                      addToLog(logModal.dayIndex, val, null, selectedLogCategory);
-                      e.target.reset();
-                    }
-                  }}
-                >
-                  <input
-                    name="logInput"
-                    type="text"
-                    placeholder="Eget..."
-                    className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                  />
-                  <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black">
-                    <Plus size={16} />
+            <div className="mt-4">
+              <div className="flex gap-1 mb-2">
+                {Object.values(CATEGORIES).map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedLogCategory(cat.id)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                      selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                    }`}
+                    title={cat.label}
+                  >
+                    {getCategoryIcon(cat.id, 14)}
                   </button>
-                </form>
+                ))}
               </div>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const val = e.target.elements.logInput.value;
+                  if (val) {
+                    addToLog(selectedLogDay, val, null, selectedLogCategory);
+                    e.target.reset();
+                  }
+                }}
+              >
+                <input
+                  name="logInput"
+                  type="text"
+                  placeholder="Eget..."
+                  className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                />
+                <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black">
+                  <Plus size={16} />
+                </button>
+              </form>
             </div>
           </div>
-        </div>
+        )}
+      </div>
+
+      {/* Sidebar Overlay */}
+      {logSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-[105]"
+          onClick={() => setLogSidebarOpen(false)}
+        />
       )}
 
       {logEntryModal && (
