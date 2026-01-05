@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -64,6 +64,52 @@ const getCategoryIcon = (categoryId, size = 14) => {
     default:
       return <Star size={size} />;
   }
+};
+
+// Get ISO week number for a date
+const getISOWeek = (date) => {
+  const target = new Date(date.valueOf());
+  const dayNum = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNum + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+  }
+  return 1 + Math.ceil((firstThursday - target) / 604800000);
+};
+
+// Get current ISO week number
+const getCurrentWeek = () => {
+  return getISOWeek(new Date());
+};
+
+// Get Monday's date for a given ISO week and year
+const getMondayOfWeek = (weekNum, year) => {
+  const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
+  const dow = simple.getDay();
+  const ISOweekStart = simple;
+  if (dow <= 4) {
+    ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+  } else {
+    ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  }
+  return ISOweekStart;
+};
+
+// Get date for a specific day in a week (0 = Monday, 6 = Sunday)
+const getDateForDay = (weekNum, dayIndex) => {
+  const year = new Date().getFullYear();
+  const monday = getMondayOfWeek(weekNum, year);
+  const date = new Date(monday);
+  date.setDate(monday.getDate() + dayIndex);
+  return date;
+};
+
+// Format date as "6 jan"
+const formatDate = (date) => {
+  const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+  return `${date.getDate()} ${months[date.getMonth()]}`;
 };
 
 const generateStandardWeek = (weekId) => {
@@ -615,6 +661,13 @@ export default function ElasticPlanner() {
                 <ChevronRight size={16} />
               </button>
             </div>
+            <button
+              onClick={() => setCurrentWeekIndex(getCurrentWeek())}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 px-3 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+              aria-label="Hoppa till idag"
+            >
+              Idag
+            </button>
             <div className="h-6 w-px bg-zinc-200" />
             <div className="flex gap-1">
               <button
@@ -702,7 +755,10 @@ export default function ElasticPlanner() {
                   >
                     <div className="flex items-center justify-between w-full px-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-bold uppercase">{dayName}</span>
+                        <div className="flex flex-col items-start leading-none">
+                          <span className="text-xs font-bold uppercase">{dayName}</span>
+                          <span className="text-[10px] font-normal opacity-70">{formatDate(getDateForDay(currentWeekIndex, dIndex))}</span>
+                        </div>
                         {isToday && !isSuperDay && (
                           <span className="bg-blue-600 text-white text-[8px] font-bold px-1 rounded-sm">IDAG</span>
                         )}
