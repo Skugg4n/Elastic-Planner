@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -351,6 +351,122 @@ const getRecentCombinations = (history, categoryId) => {
     .slice(0, 10);
 };
 
+// Report aggregation functions
+const aggregateWeeksData = (weeksData, weekStart, weekEnd) => {
+  const aggregated = {
+    blocks: [],
+    logs: [],
+  };
+
+  for (let weekNum = weekStart; weekNum <= weekEnd; weekNum++) {
+    const weekData = weeksData[weekNum];
+    if (!weekData) continue;
+
+    // Aggregate blocks from calendar
+    aggregated.blocks.push(...(weekData.calendar || []));
+
+    // Aggregate logs
+    Object.values(weekData.logs || {}).forEach((dayLogs) => {
+      aggregated.logs.push(...dayLogs);
+    });
+  }
+
+  return aggregated;
+};
+
+const generateReport = (weeksData, weekStart, weekEnd, filters) => {
+  const { categoryId, projectName, taskName } = filters;
+  const data = aggregateWeeksData(weeksData, weekStart, weekEnd);
+
+  // Filter data
+  let filteredBlocks = data.blocks;
+  let filteredLogs = data.logs;
+
+  if (categoryId) {
+    filteredBlocks = filteredBlocks.filter((b) => b.type === categoryId);
+    filteredLogs = filteredLogs.filter((l) => l.categoryId === categoryId);
+  }
+
+  if (projectName) {
+    filteredBlocks = filteredBlocks.filter((b) => b.projectName === projectName);
+    filteredLogs = filteredLogs.filter((l) => l.projectName === projectName);
+  }
+
+  if (taskName) {
+    filteredBlocks = filteredBlocks.filter((b) => b.taskName === taskName);
+    filteredLogs = filteredLogs.filter((l) => l.taskName === taskName);
+  }
+
+  // Calculate totals
+  const totalHours = filteredBlocks.reduce((sum, b) => sum + (b.status === 'done' ? b.duration : 0), 0);
+  const totalLogs = filteredLogs.length;
+
+  // Group by project
+  const projectMap = {};
+
+  filteredBlocks.forEach((block) => {
+    if (!block.projectName) return;
+    if (!projectMap[block.projectName]) {
+      projectMap[block.projectName] = {
+        name: block.projectName,
+        hours: 0,
+        logCount: 0,
+        tasks: {},
+      };
+    }
+    if (block.status === 'done') {
+      projectMap[block.projectName].hours += block.duration;
+      if (block.taskName) {
+        if (!projectMap[block.projectName].tasks[block.taskName]) {
+          projectMap[block.projectName].tasks[block.taskName] = { name: block.taskName, hours: 0, logCount: 0 };
+        }
+        projectMap[block.projectName].tasks[block.taskName].hours += block.duration;
+      }
+    }
+  });
+
+  filteredLogs.forEach((log) => {
+    if (!log.projectName) return;
+    if (!projectMap[log.projectName]) {
+      projectMap[log.projectName] = {
+        name: log.projectName,
+        hours: 0,
+        logCount: 0,
+        tasks: {},
+      };
+    }
+    projectMap[log.projectName].logCount++;
+    if (log.taskName) {
+      if (!projectMap[log.projectName].tasks[log.taskName]) {
+        projectMap[log.projectName].tasks[log.taskName] = { name: log.taskName, hours: 0, logCount: 0 };
+      }
+      projectMap[log.projectName].tasks[log.taskName].logCount++;
+    }
+  });
+
+  const byProject = Object.values(projectMap)
+    .map((proj) => ({
+      ...proj,
+      tasks: Object.values(proj.tasks),
+    }))
+    .sort((a, b) => b.hours - a.hours);
+
+  // Get all unique project and task names for filter dropdowns
+  const allProjects = [...new Set([...data.blocks.map((b) => b.projectName), ...data.logs.map((l) => l.projectName)])].filter(Boolean).sort();
+
+  const allTasks = [
+    ...new Set([...data.blocks.map((b) => b.taskName), ...data.logs.map((l) => l.taskName)]),
+  ].filter(Boolean).sort();
+
+  return {
+    totalHours: Math.round(totalHours * 10) / 10,
+    totalLogs,
+    byProject,
+    allProjects,
+    allTasks,
+  };
+};
+
 function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', projectHistory, onSave, onCancel }) {
   const [projectName, setProjectName] = useState(initialProject);
   const [taskName, setTaskName] = useState(initialTask);
@@ -491,6 +607,237 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
   );
 }
 
+function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories }) {
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterProject, setFilterProject] = useState('');
+  const [filterTask, setFilterTask] = useState('');
+  const [weekStart, setWeekStart] = useState(currentWeekIndex);
+  const [weekEnd, setWeekEnd] = useState(currentWeekIndex);
+
+  const reportData = generateReport(weeksData, weekStart, weekEnd, {
+    categoryId: filterCategory,
+    projectName: filterProject,
+    taskName: filterTask,
+  });
+
+  const handleExport = () => {
+    const exportData = {
+      dateRange: { weekStart, weekEnd },
+      filters: { categoryId: filterCategory, projectName: filterProject, taskName: filterTask },
+      ...reportData,
+    };
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `projekt-rapport_v${weekStart}-${weekEnd}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <>
+      {/* Overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/20 z-[105]"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Report Sidebar */}
+      <div
+        className={`report-sidebar fixed top-0 left-0 h-full w-[480px] bg-white shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex-none bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-blue-900 uppercase tracking-tight">📊 Projektrapport</h3>
+          <button onClick={onClose} className="text-blue-700 hover:text-blue-900 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex-none p-4 border-b border-zinc-200 bg-zinc-50">
+          <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3">Filter</h4>
+          <div className="flex flex-col gap-3">
+            {/* Category Filter */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Kategori</label>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Alla kategorier</option>
+                {Object.values(categories).map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Project Filter */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Projekt</label>
+              <select
+                value={filterProject}
+                onChange={(e) => setFilterProject(e.target.value)}
+                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Alla projekt</option>
+                {reportData.allProjects.map((proj) => (
+                  <option key={proj} value={proj}>
+                    {proj}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Task Filter */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Uppgift</label>
+              <select
+                value={filterTask}
+                onChange={(e) => setFilterTask(e.target.value)}
+                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Alla uppgifter</option>
+                {reportData.allTasks.map((task) => (
+                  <option key={task} value={task}>
+                    {task}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date Range */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Veckoperiod</label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number"
+                  min="1"
+                  value={weekStart}
+                  onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
+                  className="w-20 bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Från"
+                />
+                <span className="text-zinc-400">-</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={weekEnd}
+                  onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
+                  className="w-20 bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Till"
+                />
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setWeekStart(currentWeekIndex);
+                    setWeekEnd(currentWeekIndex);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Aktuell vecka
+                </button>
+                <button
+                  onClick={() => {
+                    setWeekStart(Math.max(1, currentWeekIndex - 3));
+                    setWeekEnd(currentWeekIndex);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Senaste 4v
+                </button>
+                <button
+                  onClick={() => {
+                    setWeekStart(Math.max(1, currentWeekIndex - 11));
+                    setWeekEnd(currentWeekIndex);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Senaste 12v
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Report Data */}
+        <div className="flex-grow overflow-y-auto p-4">
+          {/* Summary */}
+          <div className="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-100">
+            <h4 className="text-sm font-bold text-blue-900 mb-3 uppercase">Sammanfattning</h4>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Totalt antal timmar:</span>
+                <span className="font-bold text-blue-900">{reportData.totalHours}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Aktiviteter loggade:</span>
+                <span className="font-bold text-blue-900">{reportData.totalLogs}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Antal projekt:</span>
+                <span className="font-bold text-blue-900">{reportData.byProject.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* By Project */}
+          {reportData.byProject.length > 0 ? (
+            <div>
+              <h4 className="text-sm font-bold text-zinc-700 mb-3 uppercase">Per Projekt</h4>
+              <div className="space-y-3">
+                {reportData.byProject.map((proj) => (
+                  <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-3 shadow-sm">
+                    <div className="font-bold text-zinc-900 mb-1">{proj.name}</div>
+                    <div className="text-sm text-zinc-600 mb-2">
+                      {proj.hours}h planerat • {proj.logCount} aktiviteter
+                    </div>
+                    {proj.tasks.length > 0 && (
+                      <div className="ml-4 space-y-1 border-l-2 border-zinc-200 pl-3">
+                        {proj.tasks.map((task) => (
+                          <div key={task.name} className="text-xs text-zinc-600">
+                            <span className="font-medium text-zinc-800">{task.name}:</span> {task.hours}h • {task.logCount} aktiviteter
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-zinc-400 italic py-8">
+              Inga projekt med data för vald period och filter.
+            </div>
+          )}
+        </div>
+
+        {/* Footer - Export */}
+        <div className="flex-none p-4 border-t border-zinc-200 bg-zinc-50">
+          <button
+            onClick={handleExport}
+            className="w-full bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <Save size={16} />
+            Exportera rapport (JSON)
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function ElasticPlanner() {
   const [currentWeekIndex, setCurrentWeekIndex] = useState(getInitialWeekIndex);
   const [weeksData, setWeeksData] = useState(getInitialWeeksData);
@@ -524,6 +871,7 @@ export default function ElasticPlanner() {
   ]);
 
   const [projectHistory, setProjectHistory] = useState(getInitialProjectHistory);
+  const [reportSidebarOpen, setReportSidebarOpen] = useState(false);
 
   const fileInputRef = useRef(null);
   const todayIndex = (new Date().getDay() + 6) % 7;
@@ -972,6 +1320,13 @@ export default function ElasticPlanner() {
               aria-label="Hoppa till idag"
             >
               Idag
+            </button>
+            <button
+              onClick={() => setReportSidebarOpen(true)}
+              className="text-xs font-bold text-zinc-600 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
+              aria-label="Öppna projektrapport"
+            >
+              📊 Rapport
             </button>
             <div className="h-6 w-px bg-zinc-200" />
             <div className="flex gap-1">
@@ -1681,6 +2036,15 @@ export default function ElasticPlanner() {
           </div>
         </div>
       )}
+
+      {/* Report Sidebar */}
+      <ReportSidebar
+        open={reportSidebarOpen}
+        onClose={() => setReportSidebarOpen(false)}
+        weeksData={weeksData}
+        currentWeekIndex={currentWeekIndex}
+        categories={CATEGORIES}
+      />
     </div>
   );
 }
