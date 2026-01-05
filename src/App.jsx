@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1626,7 +1626,7 @@ export default function ElasticPlanner() {
                     </div>
                     <div className="border-t border-zinc-100 pt-2">
                       <div className="flex gap-1 mb-2 px-2">
-                        {Object.values(CATEGORIES).map((cat) => (
+                        {Object.values(categories).map((cat) => (
                           <button
                             key={cat.id}
                             onClick={() => setSelectedMicroCategory(cat.id)}
@@ -1712,7 +1712,7 @@ export default function ElasticPlanner() {
             <div className="bg-white p-3 rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-xs font-bold uppercase text-zinc-500 mb-2">Välj kategori</h3>
               <div className="grid grid-cols-2 gap-2 w-48">
-                {Object.values(CATEGORIES).map((cat) => (
+                {Object.values(categories).map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
@@ -1870,7 +1870,7 @@ export default function ElasticPlanner() {
                         </div>
                         {isEditing && (
                           <div className="flex gap-1 mt-2 pt-2 border-t border-zinc-200">
-                            {Object.values(CATEGORIES).map((cat) => (
+                            {Object.values(categories).map((cat) => (
                               <button
                                 key={cat.id}
                                 onClick={() => updateLogCategory(selectedLogDay, log.id, cat.id)}
@@ -1914,7 +1914,7 @@ export default function ElasticPlanner() {
 
             <div className="mt-4">
               <div className="flex gap-1 mb-2">
-                {Object.values(CATEGORIES).map((cat) => (
+                {Object.values(categories).map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setSelectedLogCategory(cat.id)}
