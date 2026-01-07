@@ -1,16 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.6.4';
+const APP_VERSION = '1.6.3';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
 const LOCAL_STORAGE_KEY = 'elastic-planner-weeks';
 const CURRENT_WEEK_KEY = 'elastic-planner-current-week';
 const PROJECT_HISTORY_KEY = 'elastic-planner-project-history';
-const CATEGORIES_KEY = 'elastic-planner-categories';
 
-const DEFAULT_CATEGORIES = {
+const CATEGORIES = {
   creative: {
     id: 'creative',
     label: 'Bok',
@@ -51,25 +50,6 @@ const DEFAULT_CATEGORIES = {
     iconColor: 'text-emerald-600',
     borderColor: 'border-emerald-300',
   },
-};
-
-const getInitialCategories = () => {
-  if (typeof window === 'undefined') return DEFAULT_CATEGORIES;
-  const stored = localStorage.getItem(CATEGORIES_KEY);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch (e) {
-      console.warn('Could not load categories from localStorage');
-    }
-  }
-  return DEFAULT_CATEGORIES;
-};
-
-const saveCategories = (categories) => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-  }
 };
 
 const getCategoryIcon = (categoryId, size = 14) => {
@@ -662,177 +642,192 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
       {/* Overlay */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/30 z-[105]"
+          className="fixed inset-0 bg-black/20 z-[105]"
           onClick={onClose}
         />
       )}
 
-      {/* Report Sidebar - Modernized */}
+      {/* Report Sidebar */}
       <div
-        className={`report-sidebar fixed top-0 left-0 h-full w-[420px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`report-sidebar fixed top-0 left-0 h-full w-[480px] bg-white shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Header - Modern Dark */}
-        <div className="flex-none bg-zinc-900 p-5 border-b border-zinc-800 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="text-white" size={20} />
-            <h3 className="text-lg font-bold text-white tracking-tight">Projektrapport</h3>
-          </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+        {/* Header */}
+        <div className="flex-none bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-blue-900 uppercase tracking-tight">📊 Projektrapport</h3>
+          <button onClick={onClose} className="text-blue-700 hover:text-blue-900 transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        {/* Filters - Compact */}
-        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
-          <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-wide">Filter</h4>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
-            >
-              <option value="">Alla kategorier</option>
-              {Object.values(categories).map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
+        {/* Filters */}
+        <div className="flex-none p-4 border-b border-zinc-200 bg-zinc-50">
+          <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3">Filter</h4>
+          <div className="flex flex-col gap-3">
+            {/* Category Filter */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Kategori</label>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Alla kategorier</option>
+                {Object.values(categories).map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <select
-              value={filterProject}
-              onChange={(e) => setFilterProject(e.target.value)}
-              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
-            >
-              <option value="">Alla projekt</option>
-              {reportData.allProjects.map((proj) => (
-                <option key={proj} value={proj}>
-                  {proj}
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* Project Filter */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Projekt</label>
+              <select
+                value={filterProject}
+                onChange={(e) => setFilterProject(e.target.value)}
+                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Alla projekt</option>
+                {reportData.allProjects.map((proj) => (
+                  <option key={proj} value={proj}>
+                    {proj}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <select
-            value={filterTask}
-            onChange={(e) => setFilterTask(e.target.value)}
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900 mb-3"
-          >
-            <option value="">Alla uppgifter</option>
-            {reportData.allTasks.map((task) => (
-              <option key={task} value={task}>
-                {task}
-              </option>
-            ))}
-          </select>
+            {/* Task Filter */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Uppgift</label>
+              <select
+                value={filterTask}
+                onChange={(e) => setFilterTask(e.target.value)}
+                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Alla uppgifter</option>
+                {reportData.allTasks.map((task) => (
+                  <option key={task} value={task}>
+                    {task}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="flex gap-1.5 items-center mb-2">
-            <input
-              type="number"
-              min="1"
-              value={weekStart}
-              onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
-              className="w-16 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
-              placeholder="V"
-            />
-            <span className="text-zinc-400 text-xs">—</span>
-            <input
-              type="number"
-              min="1"
-              value={weekEnd}
-              onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
-              className="w-16 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
-              placeholder="V"
-            />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => {
-                setWeekStart(currentWeekIndex);
-                setWeekEnd(currentWeekIndex);
-              }}
-              className="text-[11px] px-2 py-1 bg-zinc-100 hover:bg-zinc-900 hover:text-white rounded transition-colors"
-            >
-              Nu
-            </button>
-            <button
-              onClick={() => {
-                setWeekStart(Math.max(1, currentWeekIndex - 3));
-                setWeekEnd(currentWeekIndex);
-              }}
-              className="text-[11px] px-2 py-1 bg-zinc-100 hover:bg-zinc-900 hover:text-white rounded transition-colors"
-            >
-              4v
-            </button>
-            <button
-              onClick={() => {
-                setWeekStart(Math.max(1, currentWeekIndex - 11));
-                setWeekEnd(currentWeekIndex);
-              }}
-              className="text-[11px] px-2 py-1 bg-zinc-100 hover:bg-zinc-900 hover:text-white rounded transition-colors"
-            >
-              12v
-            </button>
+            {/* Date Range */}
+            <div>
+              <label className="text-xs font-medium text-zinc-600 block mb-1">Veckoperiod</label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number"
+                  min="1"
+                  value={weekStart}
+                  onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
+                  className="w-20 bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Från"
+                />
+                <span className="text-zinc-400">-</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={weekEnd}
+                  onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
+                  className="w-20 bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="Till"
+                />
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setWeekStart(currentWeekIndex);
+                    setWeekEnd(currentWeekIndex);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Aktuell vecka
+                </button>
+                <button
+                  onClick={() => {
+                    setWeekStart(Math.max(1, currentWeekIndex - 3));
+                    setWeekEnd(currentWeekIndex);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Senaste 4v
+                </button>
+                <button
+                  onClick={() => {
+                    setWeekStart(Math.max(1, currentWeekIndex - 11));
+                    setWeekEnd(currentWeekIndex);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Senaste 12v
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Stats - Large Numbers */}
-        <div className="flex-none p-4 grid grid-cols-3 gap-2 bg-white border-b border-zinc-200">
-          <div className="bg-zinc-900 p-3 rounded-lg text-center">
-            <div className="text-2xl font-black text-white">{reportData.totalHours}<span className="text-xs text-zinc-400">h</span></div>
-            <div className="text-[10px] text-zinc-400 uppercase tracking-wide mt-1">Timmar</div>
+        {/* Report Data */}
+        <div className="flex-grow overflow-y-auto p-4">
+          {/* Summary */}
+          <div className="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-100">
+            <h4 className="text-sm font-bold text-blue-900 mb-3 uppercase">Sammanfattning</h4>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Totalt antal timmar:</span>
+                <span className="font-bold text-blue-900">{reportData.totalHours}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Aktiviteter loggade:</span>
+                <span className="font-bold text-blue-900">{reportData.totalLogs}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Antal projekt:</span>
+                <span className="font-bold text-blue-900">{reportData.byProject.length}</span>
+              </div>
+            </div>
           </div>
-          <div className="bg-zinc-900 p-3 rounded-lg text-center">
-            <div className="text-2xl font-black text-white">{reportData.totalLogs}</div>
-            <div className="text-[10px] text-zinc-400 uppercase tracking-wide mt-1">Aktiviteter</div>
-          </div>
-          <div className="bg-zinc-900 p-3 rounded-lg text-center">
-            <div className="text-2xl font-black text-white">{reportData.byProject.length}</div>
-            <div className="text-[10px] text-zinc-400 uppercase tracking-wide mt-1">Projekt</div>
-          </div>
-        </div>
 
-        {/* Report Data - Cleaner Cards */}
-        <div className="flex-grow overflow-y-auto p-4 bg-zinc-50">
+          {/* By Project */}
           {reportData.byProject.length > 0 ? (
-            <div className="space-y-2.5">
-              {reportData.byProject.map((proj, idx) => (
-                <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-baseline justify-between mb-2">
-                    <h4 className="text-sm font-bold text-zinc-900">{proj.name}</h4>
-                    <div className="flex gap-2 text-xs text-zinc-500">
-                      <span className="font-mono">{proj.hours}h</span>
-                      <span>•</span>
-                      <span>{proj.logCount} akt</span>
+            <div>
+              <h4 className="text-sm font-bold text-zinc-700 mb-3 uppercase">Per Projekt</h4>
+              <div className="space-y-3">
+                {reportData.byProject.map((proj) => (
+                  <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-3 shadow-sm">
+                    <div className="font-bold text-zinc-900 mb-1">{proj.name}</div>
+                    <div className="text-sm text-zinc-600 mb-2">
+                      {proj.hours}h planerat • {proj.logCount} aktiviteter
                     </div>
+                    {proj.tasks.length > 0 && (
+                      <div className="ml-4 space-y-1 border-l-2 border-zinc-200 pl-3">
+                        {proj.tasks.map((task) => (
+                          <div key={task.name} className="text-xs text-zinc-600">
+                            <span className="font-medium text-zinc-800">{task.name}:</span> {task.hours}h • {task.logCount} aktiviteter
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {proj.tasks.length > 0 && (
-                    <div className="space-y-1 border-l-2 border-zinc-200 pl-2.5 ml-1">
-                      {proj.tasks.map((task) => (
-                        <div key={task.name} className="flex justify-between text-xs">
-                          <span className="text-zinc-700">{task.name}</span>
-                          <span className="text-zinc-500 font-mono">{task.hours}h</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="text-center text-zinc-400 italic py-12 text-sm">
-              Inga projekt för vald period
+            <div className="text-center text-zinc-400 italic py-8">
+              Inga projekt med data för vald period och filter.
             </div>
           )}
         </div>
 
         {/* Footer - Export */}
-        <div className="flex-none p-4 border-t border-zinc-200 bg-white">
+        <div className="flex-none p-4 border-t border-zinc-200 bg-zinc-50">
           <button
             onClick={handleExport}
-            className="w-full bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
+            className="w-full bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
           >
             <Save size={16} />
             Exportera rapport (JSON)
@@ -877,7 +872,6 @@ export default function ElasticPlanner() {
 
   const [projectHistory, setProjectHistory] = useState(getInitialProjectHistory);
   const [reportSidebarOpen, setReportSidebarOpen] = useState(false);
-  const [categories, setCategories] = useState(getInitialCategories);
 
   const fileInputRef = useRef(null);
   const todayIndex = (new Date().getDay() + 6) % 7;
@@ -891,10 +885,6 @@ export default function ElasticPlanner() {
   useEffect(() => {
     localStorage.setItem(CURRENT_WEEK_KEY, String(currentWeekIndex));
   }, [currentWeekIndex]);
-
-  useEffect(() => {
-    saveCategories(categories);
-  }, [categories]);
 
   useEffect(() => {
     document.title = `Elastic Planner v${APP_VERSION}`;
@@ -1137,7 +1127,7 @@ export default function ElasticPlanner() {
       start: hour,
       duration,
       type,
-      label: categories[type].label,
+      label: CATEGORIES[type].label,
       status: 'planned',
       description: '',
       projectName: projectName || null,
@@ -1536,7 +1526,7 @@ export default function ElasticPlanner() {
                       ))}
 
                     {groupedLogs.map((group) => {
-                      const category = categories[group.categoryId] || categories.life;
+                      const category = CATEGORIES[group.categoryId] || CATEGORIES.life;
                       return (
                         <div
                           key={group.id}
@@ -1613,7 +1603,7 @@ export default function ElasticPlanner() {
                     </div>
                     <div className="flex flex-col gap-1 mb-3">
                       {presets.map((preset, i) => {
-                        const presetCategory = categories[preset.category] || categories.life;
+                        const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
                         return (
                           <button
                             key={i}
@@ -1628,7 +1618,7 @@ export default function ElasticPlanner() {
                     </div>
                     <div className="border-t border-zinc-100 pt-2">
                       <div className="flex gap-1 mb-2 px-2">
-                        {Object.values(categories).map((cat) => (
+                        {Object.values(CATEGORIES).map((cat) => (
                           <button
                             key={cat.id}
                             onClick={() => setSelectedMicroCategory(cat.id)}
@@ -1677,8 +1667,8 @@ export default function ElasticPlanner() {
                   onDragStart={(e) => handleDragStart(e, block, 'bank')}
                   onClick={(e) => handleBlockClick(e, block.id)}
                   className={`flex-shrink-0 w-24 h-12 flex flex-col justify-center items-center rounded text-xs cursor-grab shadow-sm border ${
-                    categories[block.type].bg
-                  } ${categories[block.type].text} ${categories[block.type].border} ${
+                    CATEGORIES[block.type].bg
+                  } ${CATEGORIES[block.type].text} ${CATEGORIES[block.type].border} ${
                     selectedBlockIds.includes(block.id) ? 'ring-2 ring-black' : ''
                   }`}
                 >
@@ -1714,7 +1704,7 @@ export default function ElasticPlanner() {
             <div className="bg-white p-3 rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-xs font-bold uppercase text-zinc-500 mb-2">Välj kategori</h3>
               <div className="grid grid-cols-2 gap-2 w-48">
-                {Object.values(categories).map((cat) => (
+                {Object.values(CATEGORIES).map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
@@ -1799,7 +1789,7 @@ export default function ElasticPlanner() {
                 {(logs[selectedLogDay] || [])
                   .sort((a, b) => a.timestamp - b.timestamp)
                   .map((log) => {
-                    const logCategory = categories[log.categoryId] || categories.life;
+                    const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
                     const isEditing = editingLogId === log.id;
                     const isEditingTime = editingLogTime === log.id;
                     const hours = Math.floor(log.timestamp);
@@ -1872,7 +1862,7 @@ export default function ElasticPlanner() {
                         </div>
                         {isEditing && (
                           <div className="flex gap-1.5 mt-3 pt-3 border-t border-zinc-100">
-                            {Object.values(categories).map((cat) => (
+                            {Object.values(CATEGORIES).map((cat) => (
                               <button
                                 key={cat.id}
                                 onClick={() => updateLogCategory(selectedLogDay, log.id, cat.id)}
@@ -1900,7 +1890,7 @@ export default function ElasticPlanner() {
             <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-wide">Snabbval</h4>
             <div className="flex flex-wrap gap-2 mb-4">
               {presets.map((preset, i) => {
-                const presetCategory = categories[preset.category] || categories.life;
+                const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
                 return (
                   <button
                     key={i}
@@ -1915,7 +1905,7 @@ export default function ElasticPlanner() {
             </div>
 
             <div className="flex gap-2 mb-3">
-              {Object.values(categories).map((cat) => (
+              {Object.values(CATEGORIES).map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedLogCategory(cat.id)}
@@ -1964,7 +1954,7 @@ export default function ElasticPlanner() {
       {logEntryModal && (
         <div className="log-entry-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogEntryModal(null)}>
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`p-4 border-b flex justify-between items-center ${categories[logEntryModal.categoryId]?.bg || 'bg-zinc-100'} ${categories[logEntryModal.categoryId]?.text || 'text-zinc-900'}`}>
+            <div className={`p-4 border-b flex justify-between items-center ${CATEGORIES[logEntryModal.categoryId]?.bg || 'bg-zinc-100'} ${CATEGORIES[logEntryModal.categoryId]?.text || 'text-zinc-900'}`}>
               <div className="flex items-center gap-2">
                 {getCategoryIcon(logEntryModal.categoryId, 18)}
                 <h3 className="text-lg font-bold uppercase tracking-tight">Logga aktivitet</h3>
@@ -1989,7 +1979,7 @@ export default function ElasticPlanner() {
                 autoFocus
                 name="logEntryInput"
                 type="text"
-                placeholder={`Vad gjorde du i ${categories[logEntryModal.categoryId]?.label || 'denna kategori'}?`}
+                placeholder={`Vad gjorde du i ${CATEGORIES[logEntryModal.categoryId]?.label || 'denna kategori'}?`}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mb-3"
               />
               <div className="flex justify-end gap-2">
@@ -2040,27 +2030,6 @@ export default function ElasticPlanner() {
               >
                 + Lägg till snabbval
               </button>
-
-              <div className="border-t border-zinc-100 mt-6 pt-6">
-                <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Kategorier</h4>
-                <ul className="space-y-2">
-                  {Object.values(categories).map((cat) => (
-                    <li key={cat.id} className="flex gap-2 items-center">
-                      <div className={`w-6 h-6 rounded-lg ${cat.bg} flex-shrink-0`}></div>
-                      <input
-                        className="flex-grow bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-sm"
-                        value={cat.label}
-                        onChange={(e) => {
-                          setCategories({
-                            ...categories,
-                            [cat.id]: { ...cat, label: e.target.value }
-                          });
-                        }}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </div>
             </div>
           </div>
         </div>
@@ -2072,7 +2041,7 @@ export default function ElasticPlanner() {
         onClose={() => setReportSidebarOpen(false)}
         weeksData={weeksData}
         currentWeekIndex={currentWeekIndex}
-        categories={categories}
+        categories={CATEGORIES}
       />
     </div>
   );
@@ -2100,7 +2069,7 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
 }
 
 function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel }) {
-  const cat = categories[block.type];
+  const cat = CATEGORIES[block.type];
   const isDone = block.status === 'done';
   const isInactive = block.status === 'inactive';
 

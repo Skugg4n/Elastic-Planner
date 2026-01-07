@@ -1,6 +1,6 @@
 {
   "name": "elastic-planner",
-  "version": "1.6.4",
+  "version": "1.6.3",
   "private": true,
   "type": "module",
   "scripts": {
