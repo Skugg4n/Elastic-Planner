@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.6.3';
+const APP_VERSION = '1.6.4';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -647,187 +647,168 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
         />
       )}
 
-      {/* Report Sidebar */}
+      {/* Report Sidebar - Modernized */}
       <div
-        className={`report-sidebar fixed top-0 left-0 h-full w-[480px] bg-white shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`report-sidebar fixed top-0 left-0 h-full w-[420px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Header */}
-        <div className="flex-none bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-blue-900 uppercase tracking-tight">📊 Projektrapport</h3>
-          <button onClick={onClose} className="text-blue-700 hover:text-blue-900 transition-colors">
+        {/* Header - Modern Dark */}
+        <div className="flex-none bg-zinc-900 p-5 border-b border-zinc-800 flex items-center gap-3">
+          <AlertCircle className="text-white" size={20} />
+          <h3 className="text-lg font-bold text-white tracking-tight flex-grow">Projektrapport</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="flex-none p-4 border-b border-zinc-200 bg-zinc-50">
-          <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3">Filter</h4>
-          <div className="flex flex-col gap-3">
-            {/* Category Filter */}
-            <div>
-              <label className="text-xs font-medium text-zinc-600 block mb-1">Kategori</label>
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Alla kategorier</option>
-                {Object.values(categories).map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Filters - Compact */}
+        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+            >
+              <option value="">Alla kategorier</option>
+              {Object.values(categories).map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
 
-            {/* Project Filter */}
-            <div>
-              <label className="text-xs font-medium text-zinc-600 block mb-1">Projekt</label>
-              <select
-                value={filterProject}
-                onChange={(e) => setFilterProject(e.target.value)}
-                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Alla projekt</option>
-                {reportData.allProjects.map((proj) => (
-                  <option key={proj} value={proj}>
-                    {proj}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={filterProject}
+              onChange={(e) => setFilterProject(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+            >
+              <option value="">Alla projekt</option>
+              {reportData.allProjects.map((proj) => (
+                <option key={proj} value={proj}>
+                  {proj}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {/* Task Filter */}
-            <div>
-              <label className="text-xs font-medium text-zinc-600 block mb-1">Uppgift</label>
-              <select
-                value={filterTask}
-                onChange={(e) => setFilterTask(e.target.value)}
-                className="w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Alla uppgifter</option>
-                {reportData.allTasks.map((task) => (
-                  <option key={task} value={task}>
-                    {task}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <select
+            value={filterTask}
+            onChange={(e) => setFilterTask(e.target.value)}
+            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900 mb-3"
+          >
+            <option value="">Alla uppgifter</option>
+            {reportData.allTasks.map((task) => (
+              <option key={task} value={task}>
+                {task}
+              </option>
+            ))}
+          </select>
 
-            {/* Date Range */}
-            <div>
-              <label className="text-xs font-medium text-zinc-600 block mb-1">Veckoperiod</label>
-              <div className="flex gap-2 items-center">
-                <input
-                  type="number"
-                  min="1"
-                  value={weekStart}
-                  onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
-                  className="w-20 bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="Från"
-                />
-                <span className="text-zinc-400">-</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={weekEnd}
-                  onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
-                  className="w-20 bg-white border border-zinc-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="Till"
-                />
-              </div>
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => {
-                    setWeekStart(currentWeekIndex);
-                    setWeekEnd(currentWeekIndex);
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Aktuell vecka
-                </button>
-                <button
-                  onClick={() => {
-                    setWeekStart(Math.max(1, currentWeekIndex - 3));
-                    setWeekEnd(currentWeekIndex);
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Senaste 4v
-                </button>
-                <button
-                  onClick={() => {
-                    setWeekStart(Math.max(1, currentWeekIndex - 11));
-                    setWeekEnd(currentWeekIndex);
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Senaste 12v
-                </button>
-              </div>
+          <div className="flex gap-2 items-center mb-2">
+            <input
+              type="number"
+              min="1"
+              value={weekStart}
+              onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
+              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              placeholder="v"
+            />
+            <span className="text-zinc-400 text-xs">→</span>
+            <input
+              type="number"
+              min="1"
+              value={weekEnd}
+              onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
+              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              placeholder="v"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setWeekStart(currentWeekIndex);
+                setWeekEnd(currentWeekIndex);
+              }}
+              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+            >
+              Nu
+            </button>
+            <button
+              onClick={() => {
+                setWeekStart(Math.max(1, currentWeekIndex - 3));
+                setWeekEnd(currentWeekIndex);
+              }}
+              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+            >
+              4v
+            </button>
+            <button
+              onClick={() => {
+                setWeekStart(Math.max(1, currentWeekIndex - 11));
+                setWeekEnd(currentWeekIndex);
+              }}
+              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+            >
+              12v
+            </button>
+          </div>
+        </div>
+
+        {/* Stats - Large Numbers */}
+        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-zinc-900 p-3 rounded-lg text-center">
+              <div className="text-2xl font-black text-white">{reportData.totalHours}<span className="text-sm font-normal">h</span></div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Timmar</div>
+            </div>
+            <div className="bg-zinc-900 p-3 rounded-lg text-center">
+              <div className="text-2xl font-black text-white">{reportData.totalLogs}</div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Aktiviteter</div>
+            </div>
+            <div className="bg-zinc-900 p-3 rounded-lg text-center">
+              <div className="text-2xl font-black text-white">{reportData.byProject.length}</div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Projekt</div>
             </div>
           </div>
         </div>
 
-        {/* Report Data */}
+        {/* Report Data - Cleaner Cards */}
         <div className="flex-grow overflow-y-auto p-4">
-          {/* Summary */}
-          <div className="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-100">
-            <h4 className="text-sm font-bold text-blue-900 mb-3 uppercase">Sammanfattning</h4>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-zinc-600">Totalt antal timmar:</span>
-                <span className="font-bold text-blue-900">{reportData.totalHours}h</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">Aktiviteter loggade:</span>
-                <span className="font-bold text-blue-900">{reportData.totalLogs}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-600">Antal projekt:</span>
-                <span className="font-bold text-blue-900">{reportData.byProject.length}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* By Project */}
           {reportData.byProject.length > 0 ? (
-            <div>
-              <h4 className="text-sm font-bold text-zinc-700 mb-3 uppercase">Per Projekt</h4>
-              <div className="space-y-3">
-                {reportData.byProject.map((proj) => (
-                  <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-3 shadow-sm">
-                    <div className="font-bold text-zinc-900 mb-1">{proj.name}</div>
-                    <div className="text-sm text-zinc-600 mb-2">
-                      {proj.hours}h planerat • {proj.logCount} aktiviteter
-                    </div>
-                    {proj.tasks.length > 0 && (
-                      <div className="ml-4 space-y-1 border-l-2 border-zinc-200 pl-3">
-                        {proj.tasks.map((task) => (
-                          <div key={task.name} className="text-xs text-zinc-600">
-                            <span className="font-medium text-zinc-800">{task.name}:</span> {task.hours}h • {task.logCount} aktiviteter
-                          </div>
-                        ))}
-                      </div>
-                    )}
+            <div className="space-y-3">
+              {reportData.byProject.map((proj) => (
+                <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="font-bold text-zinc-900 mb-2">{proj.name}</div>
+                  <div className="flex gap-4 text-xs text-zinc-600 mb-3">
+                    <span className="font-bold">{proj.hours}h</span>
+                    <span>{proj.logCount} aktiviteter</span>
                   </div>
-                ))}
-              </div>
+                  {proj.tasks.length > 0 && (
+                    <div className="space-y-2 pt-3 border-t border-zinc-100">
+                      {proj.tasks.map((task) => (
+                        <div key={task.name} className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-zinc-700">{task.name}</span>
+                          <span className="text-zinc-500">{task.hours}h · {task.logCount}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="text-center text-zinc-400 italic py-8">
-              Inga projekt med data för vald period och filter.
+            <div className="text-center text-zinc-400 italic py-12 text-sm">
+              Inga projekt för vald period
             </div>
           )}
         </div>
 
         {/* Footer - Export */}
-        <div className="flex-none p-4 border-t border-zinc-200 bg-zinc-50">
+        <div className="flex-none p-4 border-t border-zinc-200 bg-white">
           <button
             onClick={handleExport}
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
           >
             <Save size={16} />
             Exportera rapport (JSON)

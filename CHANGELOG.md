@@ -5,6 +5,24 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] - 2026-01-07 10:11 UTC
+
+### Changed
+- **Report sidebar (PROJEKTRAPPORT) completely redesigned**
+  - Dark header (zinc-900) with AlertCircle icon matching modern app aesthetic
+  - Compact filter controls in 2-column grid layout
+  - Large, prominent stat cards with bold numbers (timmar, aktiviteter, projekt)
+  - Cleaner project cards with better spacing and hover effects
+  - Modern rounded-lg corners throughout
+  - Reduced width (420px vs 480px) for better screen usage
+  - Improved visual hierarchy and readability
+  - Better color consistency with zinc palette
+
+### Technical
+- **Why**: User feedback indicated report sidebar looked "ugly and 2010-Microsoft-like"
+- **Solution**: Complete visual redesign of report sidebar only (no state changes)
+- **Impact**: Much more modern, professional report interface matching rest of app
+
 ## [1.6.3] - 2026-01-05 21:00 UTC
 
 ### Changed
