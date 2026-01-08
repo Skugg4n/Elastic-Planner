@@ -771,7 +771,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
 
       {/* Report Sidebar - Modernized */}
       <div
-        className={`report-sidebar fixed top-0 left-0 h-full w-[420px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`report-sidebar fixed top-0 left-0 h-full w-full sm:w-[420px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -1802,24 +1802,31 @@ export default function ElasticPlanner() {
       </div>
 
       {addModal && (
-        <div className="add-modal fixed inset-0 bg-black/10 flex items-center justify-center z-[100]" onClick={() => setAddModal(null)}>
+        <div className="add-modal fixed inset-0 bg-black/10 z-[100]" onClick={() => setAddModal(null)}>
           {!addModal.selectedCategory ? (
-            <div className="bg-white p-3 rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-xs font-bold uppercase text-zinc-500 mb-2">Välj kategori</h3>
-              <div className="grid grid-cols-2 gap-2 w-48">
+            <div
+              className="absolute bg-white p-2 rounded-lg shadow-xl border border-zinc-200"
+              style={{
+                left: `${85 + (addModal.day * 150)}px`,
+                top: `${150 + ((addModal.hour - 7) * HOUR_HEIGHT * 16)}px`
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex gap-1">
                 {Object.values(CATEGORIES).map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
-                    className={`p-2 rounded text-xs font-bold text-left ${cat.bg} ${cat.text}`}
+                    className={`w-10 h-10 rounded-lg ${cat.bg} ${cat.text} flex items-center justify-center text-xs font-bold hover:scale-110 transition-transform`}
+                    title={cat.label}
                   >
-                    {cat.label}
+                    {cat.label.substring(0, 1)}
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            <div onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
               <ProjectTaskInput
                 categoryId={addModal.selectedCategory}
                 projectHistory={projectHistory}
@@ -1918,7 +1925,7 @@ export default function ElasticPlanner() {
 
       {/* Log Sidebar - Modernized */}
       <div
-        className={`log-sidebar fixed top-0 right-0 h-full w-[380px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`log-sidebar fixed top-0 right-0 h-full w-full sm:w-[380px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           logSidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

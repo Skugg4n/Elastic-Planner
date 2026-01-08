@@ -33,6 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Solution**: Markdown checkbox support + plan/template parser foundation
 - **Impact**: Can now track complex plans with sub-tasks, paving way for weekly templates
 
+## [1.6.5] - 2026-01-08 08:49 UTC
+
+### Added
+- **Inline category picker** - Category selection now appears directly at the clicked cell as small colored buttons (B/J/F/L) instead of centered modal
+- Faster workflow: One less step when adding activities
+
+### Changed
+- **Mobile responsiveness improved**
+  - Report sidebar now full-width on mobile (sm:w-[420px] on desktop)
+  - Log sidebar now full-width on mobile (sm:w-[380px] on desktop)
+  - Better touch experience on phones/tablets
+
+### Technical
+- **Why**: User feedback that category selection modal was too many clicks, and app wasn't mobile-friendly
+- **Solution**: Inline category picker positioned at cursor + responsive sidebar widths
+- **Impact**: Faster activity creation and usable on mobile devices
+
 ## [1.6.4] - 2026-01-07 10:11 UTC
 
 ### Changed
