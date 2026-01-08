@@ -5,6 +5,34 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-01-08 12:37 UTC
+
+### Added
+- **Checkbox support in block descriptions**
+  - Use markdown syntax: `- [ ] Task` and `- [x] Done`
+  - Interactive checkboxes in notes modal - click to toggle
+  - Visual progress indicator in blocks: ☑️ 2/4
+  - Perfect for training plans, checklists, project tasks
+
+- **MD parser for training plans & templates**
+  - Parse metadata (Type, Start, Repeat, Category)
+  - Support for daily sections with checkboxes
+  - Foundation for importing plans/templates
+
+- **Example training plan**
+  - `/training-plans/10-dagars-armhavningar.md`
+  - Ready to be imported (import UI coming next)
+
+### Changed
+- Note modal now renders checkboxes beautifully
+- Blocks show checkbox progress when description has checklists
+- Larger note modal (max-w-md) for better checkbox visibility
+
+### Technical
+- **Why**: User needs to track multi-day training plans with daily checkboxes
+- **Solution**: Markdown checkbox support + plan/template parser foundation
+- **Impact**: Can now track complex plans with sub-tasks, paving way for weekly templates
+
 ## [1.6.5] - 2026-01-08 08:49 UTC
 
 ### Added
