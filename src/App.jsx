@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.6.4';
+const APP_VERSION = '1.7.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -65,6 +65,128 @@ const getCategoryIcon = (categoryId, size = 14) => {
     default:
       return <Star size={size} />;
   }
+};
+
+// Parse and render markdown checkboxes
+const parseCheckboxes = (text) => {
+  if (!text) return { hasCheckboxes: false, lines: [] };
+
+  const lines = text.split('\n').map(line => {
+    const uncheckedMatch = line.match(/^- \[ \] (.+)$/);
+    const checkedMatch = line.match(/^- \[x\] (.+)$/);
+
+    if (uncheckedMatch) {
+      return { type: 'checkbox', checked: false, text: uncheckedMatch[1] };
+    } else if (checkedMatch) {
+      return { type: 'checkbox', checked: true, text: checkedMatch[1] };
+    } else {
+      return { type: 'text', text: line };
+    }
+  });
+
+  const hasCheckboxes = lines.some(l => l.type === 'checkbox');
+  return { hasCheckboxes, lines };
+};
+
+// Toggle checkbox in markdown text
+const toggleCheckbox = (text, lineIndex) => {
+  const lines = text.split('\n');
+  const line = lines[lineIndex];
+
+  if (line.match(/^- \[ \] /)) {
+    lines[lineIndex] = line.replace(/^- \[ \] /, '- [x] ');
+  } else if (line.match(/^- \[x\] /)) {
+    lines[lineIndex] = line.replace(/^- \[x\] /, '- [ ] ');
+  }
+
+  return lines.join('\n');
+};
+
+// Parse training plan/template MD file
+const parsePlanMD = (mdContent) => {
+  const lines = mdContent.split('\n');
+  const metadata = {
+    title: '',
+    type: 'plan',
+    start: null,
+    repeat: 'once',
+    category: 'training',
+  };
+
+  const days = [];
+  let currentDay = null;
+  let currentSection = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Parse title
+    if (line.startsWith('# ')) {
+      metadata.title = line.substring(2).trim();
+      continue;
+    }
+
+    // Parse metadata
+    if (line.startsWith('Type:')) {
+      metadata.type = line.substring(5).trim().toLowerCase();
+      continue;
+    }
+    if (line.startsWith('Start:')) {
+      metadata.start = line.substring(6).trim();
+      continue;
+    }
+    if (line.startsWith('Repeat:')) {
+      metadata.repeat = line.substring(7).trim().toLowerCase();
+      continue;
+    }
+    if (line.startsWith('Category:')) {
+      metadata.category = line.substring(9).trim().toLowerCase();
+      continue;
+    }
+
+    // Parse day headers (## DAG 1, ## Måndag, etc)
+    if (line.startsWith('## ')) {
+      if (currentDay && currentSection) {
+        days.push(currentDay);
+      }
+      currentDay = {
+        name: line.substring(3).trim(),
+        sections: [],
+      };
+      currentSection = null;
+      continue;
+    }
+
+    // Start new section (activity name)
+    if (line && !line.startsWith('-') && currentDay && !line.startsWith('#')) {
+      if (currentSection) {
+        currentDay.sections.push(currentSection);
+      }
+      currentSection = {
+        title: line,
+        items: [],
+      };
+      continue;
+    }
+
+    // Parse checklist items
+    if ((line.startsWith('- [ ]') || line.startsWith('- [x]')) && currentSection) {
+      currentSection.items.push(line);
+    } else if (line && currentSection && currentSection.items.length === 0) {
+      // Non-checkbox text in section
+      currentSection.items.push(line);
+    }
+  }
+
+  // Add last section and day
+  if (currentSection && currentDay) {
+    currentDay.sections.push(currentSection);
+  }
+  if (currentDay) {
+    days.push(currentDay);
+  }
+
+  return { metadata, days };
 };
 
 // Get ISO week number for a date
@@ -1713,7 +1835,7 @@ export default function ElasticPlanner() {
 
       {noteModal && (
         <div className="note-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setNoteModal(null)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
             <div className="bg-zinc-50 p-3 border-b border-zinc-100 flex justify-between items-center">
               <h3 className="text-sm font-bold uppercase text-zinc-500">Anteckningar</h3>
               <button onClick={() => setNoteModal(null)} className="text-zinc-400 hover:text-zinc-900">
@@ -1721,15 +1843,68 @@ export default function ElasticPlanner() {
               </button>
             </div>
             <div className="p-4">
-              <textarea
-                autoFocus
-                className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-800 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none focus:bg-white"
-                placeholder="Vad ska göras? Hur gick det?"
-                value={noteModal.text}
-                onChange={(e) => setNoteModal({ ...noteModal, text: e.target.value })}
-              />
+              {(() => {
+                const parsed = parseCheckboxes(noteModal.text);
+
+                if (parsed.hasCheckboxes) {
+                  return (
+                    <div className="space-y-2">
+                      {parsed.lines.map((line, idx) => {
+                        if (line.type === 'checkbox') {
+                          return (
+                            <label key={idx} className="flex items-start gap-2 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={line.checked}
+                                onChange={() => {
+                                  const newText = toggleCheckbox(noteModal.text, idx);
+                                  setNoteModal({ ...noteModal, text: newText });
+                                }}
+                                className="mt-0.5 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                              />
+                              <span className={`text-sm ${line.checked ? 'line-through text-zinc-400' : 'text-zinc-800'}`}>
+                                {line.text}
+                              </span>
+                            </label>
+                          );
+                        } else if (line.text.trim()) {
+                          return (
+                            <div key={idx} className="text-sm text-zinc-800 font-medium">
+                              {line.text}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  );
+                }
+
+                return (
+                  <textarea
+                    autoFocus
+                    className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-800 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none focus:bg-white"
+                    placeholder="Vad ska göras? Hur gick det?&#10;&#10;Använd checkboxes:&#10;- [ ] Uppgift 1&#10;- [ ] Uppgift 2"
+                    value={noteModal.text}
+                    onChange={(e) => setNoteModal({ ...noteModal, text: e.target.value })}
+                  />
+                );
+              })()}
             </div>
-            <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end">
+            <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  // Switch between checkbox view and edit view
+                  const parsed = parseCheckboxes(noteModal.text);
+                  if (parsed.hasCheckboxes) {
+                    // Already has checkboxes, show textarea to edit raw markdown
+                    setNoteModal({ ...noteModal, editMode: !noteModal.editMode });
+                  }
+                }}
+                className="text-zinc-600 text-xs hover:text-zinc-900"
+              >
+                {parseCheckboxes(noteModal.text).hasCheckboxes ? '✏️ Redigera' : ''}
+              </button>
               <button
                 onClick={() => updateDescription(noteModal.blockId, noteModal.text)}
                 className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
@@ -2124,8 +2299,24 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
             </div>
 
             {block.description && (
-              <div className={`mt-1 text-[9px] leading-tight opacity-70 overflow-hidden text-ellipsis line-clamp-2 ${isDone ? 'line-through' : ''}`}>
-                {block.description}
+              <div className={`mt-1 text-[9px] leading-tight opacity-70 ${isDone ? 'line-through' : ''}`}>
+                {(() => {
+                  const parsed = parseCheckboxes(block.description);
+                  if (parsed.hasCheckboxes) {
+                    const checkedCount = parsed.lines.filter(l => l.type === 'checkbox' && l.checked).length;
+                    const totalCount = parsed.lines.filter(l => l.type === 'checkbox').length;
+                    return (
+                      <span className="font-mono">
+                        ☑️ {checkedCount}/{totalCount}
+                      </span>
+                    );
+                  }
+                  return (
+                    <div className="overflow-hidden text-ellipsis line-clamp-2">
+                      {block.description}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
