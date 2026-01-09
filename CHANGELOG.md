@@ -5,6 +5,28 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-01-09 16:30 UTC
+
+### Added
+- **CLAUDE.MD file** - Comprehensive instructions for Claude (Emma)
+  - Identity and name configuration (Emma)
+  - Version management guidelines with checklist
+  - Changelog maintenance best practices
+  - Proactive problem prevention strategies
+  - Project structure and development workflow documentation
+  - Code style and common patterns guide
+  - Quality checks and mobile responsiveness reminders
+  - Data/state management reference
+
+### Changed
+- Formalized version update process in documentation
+- Established standards for CHANGELOG entries (Why/Solution/Impact format)
+
+### Technical
+- **Why**: User requested Claude instructions file with name (Emma), version management, changelog practices, and proactive assistance
+- **Solution**: Created comprehensive CLAUDE.MD with all guidelines, checklists, and best practices for maintaining the project
+- **Impact**: Emma (Claude) now has clear instructions for version control, documentation, and proactive problem prevention. Ensures consistency in future updates and prevents common pitfalls.
+
 ## [1.7.0] - 2026-01-08 12:37 UTC
 
 ### Added
