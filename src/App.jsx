@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, FileText, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.8.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
 const LOCAL_STORAGE_KEY = 'elastic-planner-weeks';
 const CURRENT_WEEK_KEY = 'elastic-planner-current-week';
+const PROJECT_HISTORY_KEY = 'elastic-planner-project-history';
 
 const CATEGORIES = {
   creative: {
@@ -15,7 +16,7 @@ const CATEGORIES = {
     bg: 'bg-zinc-900',
     text: 'text-white',
     border: 'border-zinc-900',
-    doneStyle: 'bg-zinc-100 text-zinc-300 border-zinc-200',
+    doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75',
     iconColor: 'text-zinc-900',
     borderColor: 'border-zinc-900',
   },
@@ -25,7 +26,7 @@ const CATEGORIES = {
     bg: 'bg-zinc-200',
     text: 'text-zinc-900',
     border: 'border-zinc-300',
-    doneStyle: 'bg-zinc-50 text-zinc-300 border-zinc-100',
+    doneStyle: 'bg-zinc-50 text-zinc-500 border-zinc-200 line-through opacity-75',
     iconColor: 'text-blue-600',
     borderColor: 'border-blue-300',
   },
@@ -35,7 +36,7 @@ const CATEGORIES = {
     bg: 'bg-red-600',
     text: 'text-white',
     border: 'border-red-700',
-    doneStyle: 'bg-red-50 text-red-200 border-red-100',
+    doneStyle: 'bg-red-50 text-red-600 border-red-200 line-through opacity-75',
     iconColor: 'text-red-600',
     borderColor: 'border-red-300',
   },
@@ -45,7 +46,7 @@ const CATEGORIES = {
     bg: 'bg-emerald-500',
     text: 'text-white',
     border: 'border-emerald-600',
-    doneStyle: 'bg-emerald-50 text-emerald-200 border-emerald-100',
+    doneStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-75',
     iconColor: 'text-emerald-600',
     borderColor: 'border-emerald-300',
   },
@@ -64,6 +65,211 @@ const getCategoryIcon = (categoryId, size = 14) => {
     default:
       return <Star size={size} />;
   }
+};
+
+// Parse and render markdown checkboxes
+const parseCheckboxes = (text) => {
+  if (!text) return { hasCheckboxes: false, lines: [] };
+
+  const lines = text.split('\n').map(line => {
+    const uncheckedMatch = line.match(/^- \[ \] (.+)$/);
+    const checkedMatch = line.match(/^- \[x\] (.+)$/);
+
+    if (uncheckedMatch) {
+      return { type: 'checkbox', checked: false, text: uncheckedMatch[1] };
+    } else if (checkedMatch) {
+      return { type: 'checkbox', checked: true, text: checkedMatch[1] };
+    } else {
+      return { type: 'text', text: line };
+    }
+  });
+
+  const hasCheckboxes = lines.some(l => l.type === 'checkbox');
+  return { hasCheckboxes, lines };
+};
+
+// Toggle checkbox in markdown text
+const toggleCheckbox = (text, lineIndex) => {
+  const lines = text.split('\n');
+  const line = lines[lineIndex];
+
+  if (line.match(/^- \[ \] /)) {
+    lines[lineIndex] = line.replace(/^- \[ \] /, '- [x] ');
+  } else if (line.match(/^- \[x\] /)) {
+    lines[lineIndex] = line.replace(/^- \[x\] /, '- [ ] ');
+  }
+
+  return lines.join('\n');
+};
+
+// Parse training plan/template MD file
+const parsePlanMD = (mdContent) => {
+  const lines = mdContent.split('\n');
+  const metadata = {
+    title: '',
+    type: 'plan',
+    start: null,
+    repeat: 'once',
+    category: 'training',
+  };
+
+  const days = [];
+  let currentDay = null;
+  let currentSection = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Parse title
+    if (line.startsWith('# ')) {
+      metadata.title = line.substring(2).trim();
+      continue;
+    }
+
+    // Parse metadata
+    if (line.startsWith('Type:')) {
+      metadata.type = line.substring(5).trim().toLowerCase();
+      continue;
+    }
+    if (line.startsWith('Start:')) {
+      metadata.start = line.substring(6).trim();
+      continue;
+    }
+    if (line.startsWith('Repeat:')) {
+      metadata.repeat = line.substring(7).trim().toLowerCase();
+      continue;
+    }
+    if (line.startsWith('Category:')) {
+      metadata.category = line.substring(9).trim().toLowerCase();
+      continue;
+    }
+
+    // Parse day headers (## DAG 1, ## Måndag, etc)
+    if (line.startsWith('## ')) {
+      if (currentDay && currentSection) {
+        days.push(currentDay);
+      }
+      currentDay = {
+        name: line.substring(3).trim(),
+        sections: [],
+      };
+      currentSection = null;
+      continue;
+    }
+
+    // Parse blocks with time format: (9-12.30) Styrketräning
+    const blockMatch = line.match(/^\((\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\)\s*(.+)$/);
+    if (blockMatch && currentDay) {
+      if (currentSection) {
+        currentDay.sections.push(currentSection);
+      }
+      const [, startStr, endStr, title] = blockMatch;
+      const start = parseFloat(startStr);
+      const end = parseFloat(endStr);
+      currentSection = {
+        type: 'block',
+        title: title.trim(),
+        start,
+        duration: end - start,
+        items: [],
+      };
+      continue;
+    }
+
+    // Parse points with time format: @9.15 Armhävningar
+    const pointMatch = line.match(/^@(\d+(?:\.\d+)?)\s*(.+)$/);
+    if (pointMatch && currentDay) {
+      if (currentSection) {
+        currentDay.sections.push(currentSection);
+      }
+      const [, timeStr, title] = pointMatch;
+      const timestamp = parseFloat(timeStr);
+      currentSection = {
+        type: 'point',
+        title: title.trim(),
+        timestamp,
+        items: [],
+      };
+      continue;
+    }
+
+    // Start new section (activity name) - old format for backwards compatibility
+    if (line && !line.startsWith('-') && currentDay && !line.startsWith('#') && !line.startsWith('(') && !line.startsWith('@')) {
+      if (currentSection) {
+        currentDay.sections.push(currentSection);
+      }
+      currentSection = {
+        type: 'section',
+        title: line,
+        items: [],
+      };
+      continue;
+    }
+
+    // Parse checklist items
+    if ((line.startsWith('- [ ]') || line.startsWith('- [x]')) && currentSection) {
+      currentSection.items.push(line);
+    } else if (line && currentSection && currentSection.items.length === 0) {
+      // Non-checkbox text in section
+      currentSection.items.push(line);
+    }
+  }
+
+  // Add last section and day
+  if (currentSection && currentDay) {
+    currentDay.sections.push(currentSection);
+  }
+  if (currentDay) {
+    days.push(currentDay);
+  }
+
+  return { metadata, days };
+};
+
+// Get ISO week number for a date
+const getISOWeek = (date) => {
+  const target = new Date(date.valueOf());
+  const dayNum = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNum + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+  }
+  return 1 + Math.ceil((firstThursday - target) / 604800000);
+};
+
+// Get current ISO week number
+const getCurrentWeek = () => {
+  return getISOWeek(new Date());
+};
+
+// Get Monday's date for a given ISO week and year
+const getMondayOfWeek = (weekNum, year) => {
+  const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
+  const dow = simple.getDay();
+  const ISOweekStart = simple;
+  if (dow <= 4) {
+    ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+  } else {
+    ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  }
+  return ISOweekStart;
+};
+
+// Get date for a specific day in a week (0 = Monday, 6 = Sunday)
+const getDateForDay = (weekNum, dayIndex) => {
+  const year = new Date().getFullYear();
+  const monday = getMondayOfWeek(weekNum, year);
+  const date = new Date(monday);
+  date.setDate(monday.getDate() + dayIndex);
+  return date;
+};
+
+// Format date as "6 jan"
+const formatDate = (date) => {
+  const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+  return `${date.getDate()} ${months[date.getMonth()]}`;
 };
 
 const generateStandardWeek = (weekId) => {
@@ -105,7 +311,7 @@ const generateStandardWeek = (weekId) => {
 
   add(5, 10, 2, 'training', 'Simhallen');
 
-  return { calendar: blocks, bank: [], logs: {} };
+  return { calendar: blocks, points: {} };
 };
 
 const migrateLogs = (weeksData) => {
@@ -137,6 +343,87 @@ const migrateLogs = (weeksData) => {
   return migratedData;
 };
 
+const migrateToProjectTracking = (weeksData) => {
+  // v1.4.0 -> v1.5.0: Add projectName and taskName to blocks and logs
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    migratedData[weekId] = {
+      calendar: (weekData.calendar || []).map((block) => ({
+        ...block,
+        projectName: block.projectName || null,
+        taskName: block.taskName || null,
+      })),
+      bank: (weekData.bank || []).map((block) => ({
+        ...block,
+        projectName: block.projectName || null,
+        taskName: block.taskName || null,
+      })),
+      logs: Object.entries(weekData.logs || {}).reduce((acc, [day, dayLogs]) => {
+        acc[day] = dayLogs.map((log) => ({
+          ...log,
+          projectName: log.projectName || null,
+          taskName: log.taskName || null,
+        }));
+        return acc;
+      }, {}),
+    };
+  }
+
+  return migratedData;
+};
+
+const migrateBankRemoval = (weeksData) => {
+  // v1.7.1 -> v1.8.0: Remove bank from all weeks
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    const bankBlocks = weekData.bank || [];
+
+    if (bankBlocks.length > 0) {
+      console.warn(`Migration v1.8.0: Week ${weekId} had ${bankBlocks.length} bank items - discarding as bank is removed`);
+    }
+
+    migratedData[weekId] = {
+      calendar: weekData.calendar || [],
+      logs: weekData.logs || {},
+    };
+  }
+
+  return migratedData;
+};
+
+const migrateLogsToPoints = (weeksData) => {
+  // v1.7.1 -> v1.8.0: Rename logs to points, add status field
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    const points = {};
+
+    if (weekData.logs) {
+      for (const [dayIndex, dayLogs] of Object.entries(weekData.logs)) {
+        points[dayIndex] = dayLogs.map((log) => ({
+          id: log.id,
+          day: parseInt(dayIndex),
+          timestamp: log.timestamp,
+          text: log.text,
+          categoryId: log.categoryId,
+          status: 'done',  // All existing logs are completed activities
+          projectName: log.projectName || null,
+          taskName: log.taskName || null,
+        }));
+      }
+    }
+
+    migratedData[weekId] = {
+      calendar: weekData.calendar || [],
+      points: points,
+    };
+  }
+
+  return migratedData;
+};
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -144,7 +431,12 @@ const getInitialWeeksData = () => {
     try {
       const parsed = JSON.parse(stored);
       if (parsed && typeof parsed === 'object') {
-        return migrateLogs(parsed);
+        // Apply migrations in sequence
+        let migrated = migrateLogs(parsed);
+        migrated = migrateToProjectTracking(migrated);
+        migrated = migrateBankRemoval(migrated);
+        migrated = migrateLogsToPoints(migrated);
+        return migrated;
       }
     } catch (e) {
       console.warn('Kunde inte läsa sparad planering, laddar standardvecka.', e);
@@ -159,20 +451,603 @@ const getInitialWeekIndex = () => {
   return Number.isFinite(stored) && stored > 0 ? stored : 1;
 };
 
+const getInitialProjectHistory = () => {
+  if (typeof window === 'undefined') {
+    return {
+      projects: { creative: {}, job: {}, training: {}, life: {} },
+      recentCombinations: [],
+    };
+  }
+
+  const stored = localStorage.getItem(PROJECT_HISTORY_KEY);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.warn('Kunde inte läsa projekthistorik');
+    }
+  }
+
+  return {
+    projects: { creative: {}, job: {}, training: {}, life: {} },
+    recentCombinations: [],
+  };
+};
+
+const saveProjectHistory = (history) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history));
+  }
+};
+
+const updateProjectHistoryRecord = (history, categoryId, projectName, taskName) => {
+  if (!projectName || !taskName) return history;
+
+  const newHistory = { ...history };
+
+  // Initialize category if needed
+  if (!newHistory.projects[categoryId]) {
+    newHistory.projects[categoryId] = {};
+  }
+
+  // Update or create project
+  if (!newHistory.projects[categoryId][projectName]) {
+    newHistory.projects[categoryId][projectName] = {
+      lastUsed: Date.now(),
+      usageCount: 1,
+      tasks: [taskName],
+    };
+  } else {
+    const project = newHistory.projects[categoryId][projectName];
+    project.lastUsed = Date.now();
+    project.usageCount = (project.usageCount || 0) + 1;
+    if (!project.tasks.includes(taskName)) {
+      project.tasks.push(taskName);
+    }
+  }
+
+  // Update recent combinations
+  const combo = { categoryId, projectName, taskName, lastUsed: Date.now() };
+  newHistory.recentCombinations = [
+    combo,
+    ...newHistory.recentCombinations.filter(
+      (c) => !(c.categoryId === categoryId && c.projectName === projectName && c.taskName === taskName)
+    ),
+  ].slice(0, 10); // Keep only last 10
+
+  saveProjectHistory(newHistory);
+  return newHistory;
+};
+
+const getProjectSuggestions = (history, categoryId, searchTerm) => {
+  if (!history.projects[categoryId]) return [];
+
+  const term = searchTerm.toLowerCase();
+  const projects = history.projects[categoryId];
+
+  return Object.entries(projects)
+    .filter(([name]) => name.toLowerCase().includes(term))
+    .map(([name, data]) => ({ name, usageCount: data.usageCount, lastUsed: data.lastUsed }))
+    .sort((a, b) => {
+      // Prefix matches score higher
+      const aPrefix = a.name.toLowerCase().startsWith(term) ? 1 : 0;
+      const bPrefix = b.name.toLowerCase().startsWith(term) ? 1 : 0;
+      if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+      // Then by usage count
+      return b.usageCount - a.usageCount;
+    })
+    .slice(0, 5);
+};
+
+const getTaskSuggestions = (history, categoryId, projectName, searchTerm) => {
+  if (!history.projects[categoryId] || !history.projects[categoryId][projectName]) return [];
+
+  const term = searchTerm.toLowerCase();
+  const tasks = history.projects[categoryId][projectName].tasks;
+
+  return tasks
+    .filter((task) => task.toLowerCase().includes(term))
+    .sort((a, b) => {
+      // Prefix matches score higher
+      const aPrefix = a.toLowerCase().startsWith(term) ? 1 : 0;
+      const bPrefix = b.toLowerCase().startsWith(term) ? 1 : 0;
+      if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+      return a.localeCompare(b);
+    })
+    .slice(0, 5);
+};
+
+const getRecentCombinations = (history, categoryId) => {
+  return history.recentCombinations
+    .filter((combo) => !categoryId || combo.categoryId === categoryId)
+    .slice(0, 10);
+};
+
+// Report aggregation functions
+const aggregateWeeksData = (weeksData, weekStart, weekEnd) => {
+  const aggregated = {
+    blocks: [],
+    points: [],
+  };
+
+  for (let weekNum = weekStart; weekNum <= weekEnd; weekNum++) {
+    const weekData = weeksData[weekNum];
+    if (!weekData) continue;
+
+    // Aggregate blocks from calendar
+    aggregated.blocks.push(...(weekData.calendar || []));
+
+    // Aggregate points
+    Object.values(weekData.points || {}).forEach((dayPoints) => {
+      aggregated.points.push(...dayPoints);
+    });
+  }
+
+  return aggregated;
+};
+
+const generateReport = (weeksData, weekStart, weekEnd, filters) => {
+  const { categoryId, projectName, taskName } = filters;
+  const data = aggregateWeeksData(weeksData, weekStart, weekEnd);
+
+  // Filter data
+  let filteredBlocks = data.blocks;
+  let filteredPoints = data.points;
+
+  if (categoryId) {
+    filteredBlocks = filteredBlocks.filter((b) => b.type === categoryId);
+    filteredPoints = filteredPoints.filter((p) => p.categoryId === categoryId);
+  }
+
+  if (projectName) {
+    filteredBlocks = filteredBlocks.filter((b) => b.projectName === projectName);
+    filteredPoints = filteredPoints.filter((p) => p.projectName === projectName);
+  }
+
+  if (taskName) {
+    filteredBlocks = filteredBlocks.filter((b) => b.taskName === taskName);
+    filteredPoints = filteredPoints.filter((p) => p.taskName === taskName);
+  }
+
+  // Calculate totals
+  const totalHours = filteredBlocks.reduce((sum, b) => sum + (b.status === 'done' ? b.duration : 0), 0);
+  const totalPoints = filteredPoints.length;
+
+  // Group by project
+  const projectMap = {};
+
+  filteredBlocks.forEach((block) => {
+    if (!block.projectName) return;
+    if (!projectMap[block.projectName]) {
+      projectMap[block.projectName] = {
+        name: block.projectName,
+        hours: 0,
+        pointCount: 0,
+        tasks: {},
+      };
+    }
+    if (block.status === 'done') {
+      projectMap[block.projectName].hours += block.duration;
+      if (block.taskName) {
+        if (!projectMap[block.projectName].tasks[block.taskName]) {
+          projectMap[block.projectName].tasks[block.taskName] = { name: block.taskName, hours: 0, pointCount: 0 };
+        }
+        projectMap[block.projectName].tasks[block.taskName].hours += block.duration;
+      }
+    }
+  });
+
+  filteredPoints.forEach((point) => {
+    if (!point.projectName) return;
+    if (!projectMap[point.projectName]) {
+      projectMap[point.projectName] = {
+        name: point.projectName,
+        hours: 0,
+        pointCount: 0,
+        tasks: {},
+      };
+    }
+    projectMap[point.projectName].pointCount++;
+    if (point.taskName) {
+      if (!projectMap[point.projectName].tasks[point.taskName]) {
+        projectMap[point.projectName].tasks[point.taskName] = { name: point.taskName, hours: 0, pointCount: 0 };
+      }
+      projectMap[point.projectName].tasks[point.taskName].pointCount++;
+    }
+  });
+
+  const byProject = Object.values(projectMap)
+    .map((proj) => ({
+      ...proj,
+      tasks: Object.values(proj.tasks),
+    }))
+    .sort((a, b) => b.hours - a.hours);
+
+  // Get all unique project and task names for filter dropdowns
+  const allProjects = [...new Set([...data.blocks.map((b) => b.projectName), ...data.points.map((p) => p.projectName)])].filter(Boolean).sort();
+
+  const allTasks = [
+    ...new Set([...data.blocks.map((b) => b.taskName), ...data.points.map((p) => p.taskName)]),
+  ].filter(Boolean).sort();
+
+  return {
+    totalHours: Math.round(totalHours * 10) / 10,
+    totalPoints,
+    byProject,
+    allProjects,
+    allTasks,
+  };
+};
+
+function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', projectHistory, onSave, onCancel }) {
+  const [projectName, setProjectName] = useState(initialProject);
+  const [taskName, setTaskName] = useState(initialTask);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
+
+  const projectInputRef = useRef(null);
+  const taskInputRef = useRef(null);
+
+  const projectSuggestions = getProjectSuggestions(projectHistory, categoryId, projectName);
+  const taskSuggestions = getTaskSuggestions(projectHistory, categoryId, projectName, taskName);
+  const recentCombos = getRecentCombinations(projectHistory, categoryId);
+
+  useEffect(() => {
+    projectInputRef.current?.focus();
+  }, []);
+
+  const handleSave = () => {
+    onSave(projectName.trim(), taskName.trim());
+  };
+
+  return (
+    <div className="project-task-input bg-white p-4 rounded-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      {/* Recent Combinations */}
+      {recentCombos.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Senaste 10</h4>
+          <div className="flex flex-wrap gap-2">
+            {recentCombos.map((combo, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setProjectName(combo.projectName);
+                  setTaskName(combo.taskName);
+                  taskInputRef.current?.focus();
+                }}
+                className="text-xs bg-zinc-100 hover:bg-zinc-200 px-2 py-1 rounded transition-colors"
+              >
+                {combo.projectName} / {combo.taskName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Project Name Input */}
+      <div className="relative mb-3">
+        <label className="block text-xs font-bold text-zinc-600 mb-1">Projekt</label>
+        <input
+          ref={projectInputRef}
+          type="text"
+          value={projectName}
+          onChange={(e) => {
+            setProjectName(e.target.value);
+            setShowProjectDropdown(true);
+          }}
+          onFocus={() => setShowProjectDropdown(true)}
+          onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
+          placeholder="t.ex. Tivoli 2"
+          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+        />
+        {showProjectDropdown && projectSuggestions.length > 0 && projectName && (
+          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+            {projectSuggestions.map((proj, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setProjectName(proj.name);
+                  setShowProjectDropdown(false);
+                  taskInputRef.current?.focus();
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex justify-between items-center"
+              >
+                <span>{proj.name}</span>
+                <span className="text-xs text-zinc-400">({proj.usageCount})</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Task Name Input */}
+      <div className="relative mb-4">
+        <label className="block text-xs font-bold text-zinc-600 mb-1">Uppgift</label>
+        <input
+          ref={taskInputRef}
+          type="text"
+          value={taskName}
+          onChange={(e) => {
+            setTaskName(e.target.value);
+            setShowTaskDropdown(true);
+          }}
+          onFocus={() => setShowTaskDropdown(true)}
+          onBlur={() => setTimeout(() => setShowTaskDropdown(false), 200)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleSave();
+            }
+          }}
+          placeholder="t.ex. Skiss"
+          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+        />
+        {showTaskDropdown && taskSuggestions.length > 0 && taskName && (
+          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+            {taskSuggestions.map((task, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  setTaskName(task);
+                  setShowTaskDropdown(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50"
+              >
+                {task}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 text-sm font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
+        >
+          Avbryt
+        </button>
+        <button
+          onClick={handleSave}
+          className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+        >
+          Spara
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories }) {
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterProject, setFilterProject] = useState('');
+  const [filterTask, setFilterTask] = useState('');
+  const [weekStart, setWeekStart] = useState(currentWeekIndex);
+  const [weekEnd, setWeekEnd] = useState(currentWeekIndex);
+
+  const reportData = generateReport(weeksData, weekStart, weekEnd, {
+    categoryId: filterCategory,
+    projectName: filterProject,
+    taskName: filterTask,
+  });
+
+  const handleExport = () => {
+    const exportData = {
+      dateRange: { weekStart, weekEnd },
+      filters: { categoryId: filterCategory, projectName: filterProject, taskName: filterTask },
+      ...reportData,
+    };
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `projekt-rapport_v${weekStart}-${weekEnd}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <>
+      {/* Overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/20 z-[105]"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Report Sidebar - Modernized */}
+      <div
+        className={`report-sidebar fixed top-0 left-0 h-full w-full sm:w-[420px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Header - Modern Dark */}
+        <div className="flex-none bg-zinc-900 p-5 border-b border-zinc-800 flex items-center gap-3">
+          <AlertCircle className="text-white" size={20} />
+          <h3 className="text-lg font-bold text-white tracking-tight flex-grow">Projektrapport</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Filters - Compact */}
+        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+            >
+              <option value="">Alla kategorier</option>
+              {Object.values(categories).map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterProject}
+              onChange={(e) => setFilterProject(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+            >
+              <option value="">Alla projekt</option>
+              {reportData.allProjects.map((proj) => (
+                <option key={proj} value={proj}>
+                  {proj}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <select
+            value={filterTask}
+            onChange={(e) => setFilterTask(e.target.value)}
+            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900 mb-3"
+          >
+            <option value="">Alla uppgifter</option>
+            {reportData.allTasks.map((task) => (
+              <option key={task} value={task}>
+                {task}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex gap-2 items-center mb-2">
+            <input
+              type="number"
+              min="1"
+              value={weekStart}
+              onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
+              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              placeholder="v"
+            />
+            <span className="text-zinc-400 text-xs">→</span>
+            <input
+              type="number"
+              min="1"
+              value={weekEnd}
+              onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
+              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              placeholder="v"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setWeekStart(currentWeekIndex);
+                setWeekEnd(currentWeekIndex);
+              }}
+              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+            >
+              Nu
+            </button>
+            <button
+              onClick={() => {
+                setWeekStart(Math.max(1, currentWeekIndex - 3));
+                setWeekEnd(currentWeekIndex);
+              }}
+              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+            >
+              4v
+            </button>
+            <button
+              onClick={() => {
+                setWeekStart(Math.max(1, currentWeekIndex - 11));
+                setWeekEnd(currentWeekIndex);
+              }}
+              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+            >
+              12v
+            </button>
+          </div>
+        </div>
+
+        {/* Stats - Large Numbers */}
+        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-zinc-900 p-3 rounded-lg text-center">
+              <div className="text-2xl font-black text-white">{reportData.totalHours}<span className="text-sm font-normal">h</span></div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Timmar</div>
+            </div>
+            <div className="bg-zinc-900 p-3 rounded-lg text-center">
+              <div className="text-2xl font-black text-white">{reportData.totalLogs}</div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Aktiviteter</div>
+            </div>
+            <div className="bg-zinc-900 p-3 rounded-lg text-center">
+              <div className="text-2xl font-black text-white">{reportData.byProject.length}</div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Projekt</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Report Data - Cleaner Cards */}
+        <div className="flex-grow overflow-y-auto p-4">
+          {reportData.byProject.length > 0 ? (
+            <div className="space-y-3">
+              {reportData.byProject.map((proj) => (
+                <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="font-bold text-zinc-900 mb-2">{proj.name}</div>
+                  <div className="flex gap-4 text-xs text-zinc-600 mb-3">
+                    <span className="font-bold">{proj.hours}h</span>
+                    <span>{proj.logCount} aktiviteter</span>
+                  </div>
+                  {proj.tasks.length > 0 && (
+                    <div className="space-y-2 pt-3 border-t border-zinc-100">
+                      {proj.tasks.map((task) => (
+                        <div key={task.name} className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-zinc-700">{task.name}</span>
+                          <span className="text-zinc-500">{task.hours}h · {task.logCount}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-zinc-400 italic py-12 text-sm">
+              Inga projekt för vald period
+            </div>
+          )}
+        </div>
+
+        {/* Footer - Export */}
+        <div className="flex-none p-4 border-t border-zinc-200 bg-white">
+          <button
+            onClick={handleExport}
+            className="w-full bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
+          >
+            <Save size={16} />
+            Exportera rapport (JSON)
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function ElasticPlanner() {
   const [currentWeekIndex, setCurrentWeekIndex] = useState(getInitialWeekIndex);
   const [weeksData, setWeeksData] = useState(getInitialWeeksData);
 
   const [draggedBlock, setDraggedBlock] = useState(null);
-  const [sourceContainer, setSourceContainer] = useState(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState([]);
   const [editingLabelId, setEditingLabelId] = useState(null);
   const [addModal, setAddModal] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
-  const [logModal, setLogModal] = useState(null);
+  const [logSidebarOpen, setLogSidebarOpen] = useState(false);
+  const [selectedLogDay, setSelectedLogDay] = useState(null);
   const [logEntryModal, setLogEntryModal] = useState(null);
   const [editingLogId, setEditingLogId] = useState(null);
+  const [templateDropdownDay, setTemplateDropdownDay] = useState(null);
+  const [editingLogTime, setEditingLogTime] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [microMenuOpen, setMicroMenuOpen] = useState(false);
   const [dropIndicator, setDropIndicator] = useState(null);
   const [selectedMicroCategory, setSelectedMicroCategory] = useState('life');
@@ -189,10 +1064,13 @@ export default function ElasticPlanner() {
     { label: 'Promenad', category: 'life', icon: 'star' },
   ]);
 
+  const [projectHistory, setProjectHistory] = useState(getInitialProjectHistory);
+  const [reportSidebarOpen, setReportSidebarOpen] = useState(false);
+
   const fileInputRef = useRef(null);
   const todayIndex = (new Date().getDay() + 6) % 7;
-  const currentData = weeksData[currentWeekIndex] || { calendar: [], bank: [], logs: {} };
-  const { calendar, bank, logs } = currentData;
+  const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {} };
+  const { calendar, points } = currentData;
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(weeksData));
@@ -218,13 +1096,14 @@ export default function ElasticPlanner() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setLogModal(null);
+        setLogSidebarOpen(false);
         setLogEntryModal(null);
         setNoteModal(null);
         setAddModal(null);
         setSettingsOpen(false);
         setMicroMenuOpen(false);
         setEditingLogId(null);
+        setEditingLogTime(null);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -239,7 +1118,7 @@ export default function ElasticPlanner() {
         !e.target.closest('.add-modal') &&
         !e.target.closest('.bulk-menu') &&
         !e.target.closest('.note-modal') &&
-        !e.target.closest('.log-modal') &&
+        !e.target.closest('.log-sidebar') &&
         !e.target.closest('.log-entry-modal') &&
         !e.target.closest('.settings-modal') &&
         !e.target.closest('.micro-menu')
@@ -248,7 +1127,6 @@ export default function ElasticPlanner() {
         setEditingLabelId(null);
         setAddModal(null);
         setNoteModal(null);
-        setLogModal(null);
         setLogEntryModal(null);
         setSettingsOpen(false);
         setMicroMenuOpen(false);
@@ -264,15 +1142,73 @@ export default function ElasticPlanner() {
     }
   }, [currentWeekIndex, weeksData]);
 
-  const updateCurrentWeek = (newCalendar, newBank, newLogs) => {
+  const updateCurrentWeek = (newCalendar, newPoints) => {
     setWeeksData((prev) => ({
       ...prev,
       [currentWeekIndex]: {
         calendar: newCalendar,
-        bank: newBank,
-        logs: newLogs || prev[currentWeekIndex]?.logs || {},
+        points: newPoints || prev[currentWeekIndex]?.points || {},
       },
     }));
+  };
+
+  // Template management functions
+  const TEMPLATES_KEY = 'elastic-planner-templates';
+
+  const listTemplates = () => {
+    const stored = localStorage.getItem(TEMPLATES_KEY);
+    return stored ? JSON.parse(stored) : {};
+  };
+
+  const saveTemplate = (name, dayIndex) => {
+    const templates = listTemplates();
+    const dayBlocks = calendar.filter((b) => b.day === dayIndex);
+    const dayPoints = points[dayIndex] || [];
+
+    templates[name] = {
+      name,
+      blocks: dayBlocks.map((b) => ({ ...b, day: null })), // Remove day reference
+      points: dayPoints.map((p) => ({ ...p, day: null })),
+      createdAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+  };
+
+  const applyTemplate = (templateName, dayIndex) => {
+    const templates = listTemplates();
+    const template = templates[templateName];
+    if (!template) return;
+
+    // Remove existing blocks and points for this day
+    const newCalendar = calendar.filter((b) => b.day !== dayIndex);
+    const newPoints = { ...points };
+    delete newPoints[dayIndex];
+
+    // Apply template blocks
+    template.blocks.forEach((block) => {
+      newCalendar.push({
+        ...block,
+        id: `block-${Date.now()}-${Math.random()}`,
+        day: dayIndex,
+      });
+    });
+
+    // Apply template points
+    newPoints[dayIndex] = template.points.map((point) => ({
+      ...point,
+      id: `point-${Date.now()}-${Math.random()}`,
+      day: dayIndex,
+    }));
+
+    updateCurrentWeek(newCalendar, newPoints);
+    setTemplateDropdownDay(null);
+  };
+
+  const deleteTemplate = (templateName) => {
+    const templates = listTemplates();
+    delete templates[templateName];
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
   };
 
   const resolveCollisions = (allBlocks, changedBlock) => {
@@ -302,8 +1238,8 @@ export default function ElasticPlanner() {
     return blocks;
   };
 
-  const addToLog = (day, text, specificTime = null, categoryId = 'life') => {
-    const currentLogs = logs[day] || [];
+  const addPoint = (day, text, specificTime = null, categoryId = 'life', status = 'done', projectName = null, taskName = null) => {
+    const currentPoints = points[day] || [];
     let timestamp;
     if (specificTime) {
       timestamp = specificTime;
@@ -314,36 +1250,63 @@ export default function ElasticPlanner() {
     }
     timestamp = Math.max(7, Math.min(23.9, timestamp));
 
-    const newEntry = {
-      id: Date.now(),
-      text,
+    const newPoint = {
+      id: `point-${Date.now()}`,
+      day,
       timestamp,
+      text,
       categoryId,
-      // Keep type for backwards compatibility during migration
-      type: categoryId === 'training' ? 'zap' : 'star',
+      status,  // 'planned' or 'done'
+      projectName: projectName || null,
+      taskName: taskName || null,
     };
 
-    const newLogs = { ...logs, [day]: [...currentLogs, newEntry] };
-    updateCurrentWeek(calendar, bank, newLogs);
+    const newPoints = { ...points, [day]: [...currentPoints, newPoint] };
+    updateCurrentWeek(calendar, newPoints);
+
+    // Update project history if project info provided
+    if (projectName && taskName) {
+      const updatedHistory = updateProjectHistoryRecord(projectHistory, categoryId, projectName, taskName);
+      setProjectHistory(updatedHistory);
+    }
   };
 
-  const removeFromLog = (day, entryId) => {
-    const currentLogs = logs[day] || [];
-    const newDayLogs = currentLogs.filter((e) => e.id !== entryId);
-    const newLogs = { ...logs, [day]: newDayLogs };
-    updateCurrentWeek(calendar, bank, newLogs);
+  const removePoint = (day, pointId) => {
+    const currentPoints = points[day] || [];
+    const newDayPoints = currentPoints.filter((p) => p.id !== pointId);
+    const newPoints = { ...points, [day]: newDayPoints };
+    updateCurrentWeek(calendar, newPoints);
   };
 
-  const updateLogCategory = (day, entryId, newCategoryId) => {
-    const currentLogs = logs[day] || [];
-    const newDayLogs = currentLogs.map((log) =>
-      log.id === entryId
-        ? { ...log, categoryId: newCategoryId, type: newCategoryId === 'training' ? 'zap' : 'star' }
-        : log
+  const togglePointStatus = (day, pointId) => {
+    const currentPoints = points[day] || [];
+    const newDayPoints = currentPoints.map((point) =>
+      point.id === pointId
+        ? { ...point, status: point.status === 'done' ? 'planned' : 'done' }
+        : point
     );
-    const newLogs = { ...logs, [day]: newDayLogs };
-    updateCurrentWeek(calendar, bank, newLogs);
+    const newPoints = { ...points, [day]: newDayPoints };
+    updateCurrentWeek(calendar, newPoints);
+  };
+
+  const updatePointCategory = (day, pointId, newCategoryId) => {
+    const currentPoints = points[day] || [];
+    const newDayPoints = currentPoints.map((point) =>
+      point.id === pointId ? { ...point, categoryId: newCategoryId } : point
+    );
+    const newPoints = { ...points, [day]: newDayPoints };
+    updateCurrentWeek(calendar, newPoints);
     setEditingLogId(null);
+  };
+
+  const updatePointTime = (day, pointId, newTime) => {
+    const currentPoints = points[day] || [];
+    const newDayPoints = currentPoints.map((point) =>
+      point.id === pointId ? { ...point, timestamp: newTime } : point
+    );
+    const newPoints = { ...points, [day]: newDayPoints };
+    updateCurrentWeek(calendar, newPoints);
+    setEditingLogTime(null);
   };
 
   const handleResizeStart = (e, block) => {
@@ -364,7 +1327,7 @@ export default function ElasticPlanner() {
       const rawNewDuration = dropIndicator.duration + deltaHours;
       const snappedDuration = Math.max(0.5, Math.round(rawNewDuration * 2) / 2);
       const updatedCalendar = calendar.map((b) => (b.id === dropIndicator.id ? { ...b, duration: snappedDuration } : b));
-      updateCurrentWeek(updatedCalendar, bank, logs);
+      updateCurrentWeek(updatedCalendar, points);
     };
 
     const handleMouseUp = () => {
@@ -372,7 +1335,7 @@ export default function ElasticPlanner() {
       const block = calendar.find((b) => b.id === dropIndicator.id);
       if (block) {
         const newCalendar = resolveCollisions(calendar, block);
-        updateCurrentWeek(newCalendar, bank, logs);
+        updateCurrentWeek(newCalendar, points);
       }
       setDraggedBlock(null);
       setDropIndicator(null);
@@ -385,7 +1348,7 @@ export default function ElasticPlanner() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dropIndicator, calendar, bank, logs]);
+  }, [dropIndicator, calendar, points]);
 
   const handleBlockClick = (e, blockId) => {
     e.stopPropagation();
@@ -403,19 +1366,13 @@ export default function ElasticPlanner() {
     const part1 = { ...block, duration: part1Duration };
     const part2 = { ...block, id: `${block.id}-split`, start: block.start + part1Duration, duration: part1Duration };
 
-    if (calendar.find((b) => b.id === block.id)) {
-      const newCalendar = calendar.filter((b) => b.id !== block.id);
-      newCalendar.push(part1, part2);
-      updateCurrentWeek(resolveCollisions(newCalendar, part1), bank, logs);
-    } else {
-      const newBank = bank.filter((b) => b.id !== block.id);
-      newBank.push(part1, part2);
-      updateCurrentWeek(calendar, newBank, logs);
-    }
+    const newCalendar = calendar.filter((b) => b.id !== block.id);
+    newCalendar.push(part1, part2);
+    updateCurrentWeek(resolveCollisions(newCalendar, part1), points);
     setSelectedBlockIds([]);
   };
 
-  const addNewBlock = (type) => {
+  const addNewBlock = (type, projectName = null, taskName = null) => {
     if (!addModal) return;
     const { day, hour } = addModal;
     const duration = 1;
@@ -428,54 +1385,252 @@ export default function ElasticPlanner() {
       label: CATEGORIES[type].label,
       status: 'planned',
       description: '',
+      projectName: projectName || null,
+      taskName: taskName || null,
     };
 
     const newCalendar = [...calendar, newBlock];
-    updateCurrentWeek(resolveCollisions(newCalendar, newBlock), bank, logs);
+    updateCurrentWeek(resolveCollisions(newCalendar, newBlock), points);
+
+    // Update project history if project info provided
+    if (projectName && taskName) {
+      const updatedHistory = updateProjectHistoryRecord(projectHistory, type, projectName, taskName);
+      setProjectHistory(updatedHistory);
+    }
+
     setAddModal(null);
   };
 
   const handleMicroAdd = (label, categoryId = 'life') => {
-    addToLog(todayIndex, label, null, categoryId);
+    addPoint(todayIndex, label, null, categoryId);
     setMicroMenuOpen(false);
+  };
+
+  const handleImportPlan = () => {
+    // Hardcoded plan content (in future, read from file)
+    const planContent = `# 10-dagars armhävningsplan
+Type: plan
+Start: 2026-01-08
+Repeat: once
+Category: training
+
+## DAG 1
+Armhävningar
+- [x] 2×22 armhävningar
+- [x] Bra. Stäng boken.
+
+## DAG 2
+Armhävningar
+- [ ] 5×12
+- [ ] 60 sek vila
+- [ ] Perfekt form
+
+Rörlighet
+- [ ] Axlar, bröstrygg 5 min
+
+## DAG 3
+Löpning lätt
+- [ ] 20–25 min lugnt
+- [ ] Snacktempo
+
+Armhävningar
+- [ ] 3×15 lugnt
+
+## DAG 4
+Armhävningar volym
+- [ ] 6×10
+- [ ] Kort vila
+- [ ] Sista repsen "nästan jobbiga"
+
+Planka
+- [ ] 2×60–90 sek
+
+## DAG 5
+Löpband intervall
+- [ ] 4×400 m
+- [ ] 12.0 km/h
+- [ ] 90 sek gångvila
+
+Ingen armhävningspress idag
+
+## DAG 6
+Armhävningar
+- [ ] 4×14
+- [ ] Samma tempo hela vägen
+- [ ] Fokus: linje, andning
+
+## DAG 7
+VILA eller mycket lätt
+- [ ] Promenad
+- [ ] Rörlighet
+- [ ] Inga tester
+
+Detta är viktigt. Anpassning sker här.
+
+## DAG 8
+Armhävningar – testdag
+- [ ] Uppvärmning
+- [ ] 1 maxset
+- [ ] Avbryt när tekniken hotas
+
+Mål: 26–30
+
+Oavsett siffra. Klart sen.
+
+## DAG 9
+Löpband skarpt
+- [ ] Uppvärmning som vi pratade om
+- [ ] 11.7 km/h – 2 km
+- [ ] Ingen spurt
+
+## DAG 10
+Lätt armhävningspåminnelse
+- [ ] 3×12
+- [ ] Bara för att hålla nervsystemet "på"`;
+
+    // Parse the plan
+    const { metadata, days } = parsePlanMD(planContent);
+
+    // Parse start date
+    const startDate = new Date(metadata.start);
+
+    // Create blocks and points for each day
+    const newBlocks = [];
+    const newPoints = [];
+    days.forEach((day, dayIndex) => {
+      // Calculate the date for this day
+      const dayDate = new Date(startDate);
+      dayDate.setDate(startDate.getDate() + dayIndex);
+
+      // Get day of week (0 = Monday, 6 = Sunday)
+      const dayOfWeek = (dayDate.getDay() + 6) % 7;
+
+      // Get ISO week number for this date
+      const weekNum = getISOWeek(dayDate);
+
+      // Process each section in the day
+      day.sections.forEach((section, sectionIndex) => {
+        const description = section.items.join('\n');
+
+        if (section.type === 'block') {
+          // Create block with specified time and duration
+          const block = {
+            id: `import-${Date.now()}-${dayIndex}-${sectionIndex}`,
+            day: dayOfWeek,
+            start: section.start,
+            duration: section.duration,
+            type: metadata.category,
+            label: section.title,
+            status: 'planned',
+            description: description,
+            projectName: null,
+            taskName: null,
+          };
+          newBlocks.push({ block, weekNum });
+        } else if (section.type === 'point') {
+          // Create point with specified timestamp
+          const point = {
+            id: `import-point-${Date.now()}-${dayIndex}-${sectionIndex}`,
+            day: dayOfWeek,
+            timestamp: section.timestamp,
+            text: section.title,
+            categoryId: metadata.category,
+            status: 'planned',
+            projectName: null,
+            taskName: null,
+          };
+          newPoints.push({ point, weekNum });
+        } else {
+          // Old format: create block without specified time
+          const block = {
+            id: `import-${Date.now()}-${dayIndex}-${sectionIndex}`,
+            day: dayOfWeek,
+            start: 8 + sectionIndex, // Stack sections at different hours
+            duration: 1,
+            type: metadata.category,
+            label: section.title,
+            status: 'planned',
+            description: description,
+            projectName: null,
+            taskName: null,
+          };
+          newBlocks.push({ block, weekNum });
+        }
+      });
+    });
+
+    // Group blocks and points by week
+    const blocksByWeek = {};
+    const pointsByWeek = {};
+
+    newBlocks.forEach(({ block, weekNum }) => {
+      if (!blocksByWeek[weekNum]) blocksByWeek[weekNum] = [];
+      blocksByWeek[weekNum].push(block);
+    });
+
+    newPoints.forEach(({ point, weekNum }) => {
+      if (!pointsByWeek[weekNum]) pointsByWeek[weekNum] = {};
+      if (!pointsByWeek[weekNum][point.day]) pointsByWeek[weekNum][point.day] = [];
+      pointsByWeek[weekNum][point.day].push(point);
+    });
+
+    // Update weeks data
+    const newWeeksData = { ...weeksData };
+
+    // Add blocks
+    Object.entries(blocksByWeek).forEach(([weekNum, blocks]) => {
+      const weekIndex = parseInt(weekNum);
+      if (!newWeeksData[weekIndex]) {
+        newWeeksData[weekIndex] = { calendar: [], points: {} };
+      }
+      newWeeksData[weekIndex].calendar = [...newWeeksData[weekIndex].calendar, ...blocks];
+    });
+
+    // Add points
+    Object.entries(pointsByWeek).forEach(([weekNum, weekPoints]) => {
+      const weekIndex = parseInt(weekNum);
+      if (!newWeeksData[weekIndex]) {
+        newWeeksData[weekIndex] = { calendar: [], points: {} };
+      }
+      Object.entries(weekPoints).forEach(([dayIndex, dayPoints]) => {
+        const existingPoints = newWeeksData[weekIndex].points[dayIndex] || [];
+        newWeeksData[weekIndex].points[dayIndex] = [...existingPoints, ...dayPoints];
+      });
+    });
+
+    setWeeksData(newWeeksData);
+    setImportModalOpen(false);
   };
 
   const updateDescription = (blockId, text) => {
     const updateList = (list) => list.map((b) => (b.id === blockId ? { ...b, description: text } : b));
-    if (calendar.find((b) => b.id === blockId)) updateCurrentWeek(updateList(calendar), bank, logs);
-    else updateCurrentWeek(calendar, updateList(bank), logs);
+    updateCurrentWeek(updateList(calendar), points);
     setNoteModal(null);
   };
 
   const toggleStatus = (blockId) => {
     const toggle = (list) =>
       list.map((b) => (b.id === blockId ? { ...b, status: b.status === 'done' ? 'planned' : b.status === 'inactive' ? 'planned' : 'done' } : b));
-    if (calendar.find((b) => b.id === blockId)) updateCurrentWeek(toggle(calendar), bank, logs);
-    else updateCurrentWeek(calendar, toggle(bank), logs);
+    updateCurrentWeek(toggle(calendar), points);
     if (selectedBlockIds.length <= 1) setSelectedBlockIds([]);
   };
 
   const deleteBlock = (blockId) => {
-    if (calendar.find((b) => b.id === blockId)) {
-      updateCurrentWeek(calendar.filter((b) => b.id !== blockId), bank, logs);
-    } else {
-      updateCurrentWeek(calendar, bank.filter((b) => b.id !== blockId), logs);
-    }
+    updateCurrentWeek(calendar.filter((b) => b.id !== blockId), points);
     setSelectedBlockIds([]);
   };
 
   const handleBulkDelete = () => {
     const ids = new Set(selectedBlockIds);
     const newCalendar = calendar.filter((b) => !ids.has(b.id));
-    const newBank = bank.filter((b) => !ids.has(b.id));
-    updateCurrentWeek(newCalendar, newBank, logs);
+    updateCurrentWeek(newCalendar, points);
     setSelectedBlockIds([]);
   };
 
   const handleBulkToggle = () => {
     const ids = new Set(selectedBlockIds);
     const toggle = (list) => list.map((b) => (ids.has(b.id) ? { ...b, status: 'done' } : b));
-    updateCurrentWeek(toggle(calendar), toggle(bank), logs);
+    updateCurrentWeek(toggle(calendar), points);
     setSelectedBlockIds([]);
   };
 
@@ -508,8 +1663,7 @@ export default function ElasticPlanner() {
     e.preventDefault();
     if (!draggedBlock || !dropIndicator || dropIndicator.type === 'resize') return;
 
-    let newCalendar = sourceContainer === 'calendar' ? calendar.filter((b) => b.id !== draggedBlock.id) : [...calendar];
-    let newBank = sourceContainer === 'bank' ? bank.filter((b) => b.id !== draggedBlock.id) : [...bank];
+    let newCalendar = calendar.filter((b) => b.id !== draggedBlock.id);
 
     if (dropIndicator.type === 'merge') {
       const target = newCalendar.find((b) => b.id === dropIndicator.targetBlockId);
@@ -521,7 +1675,7 @@ export default function ElasticPlanner() {
       newCalendar = resolveCollisions(newCalendar, newBlock);
     }
 
-    updateCurrentWeek(newCalendar, newBank, logs);
+    updateCurrentWeek(newCalendar, points);
     setDraggedBlock(null);
     setDropIndicator(null);
   };
@@ -558,15 +1712,25 @@ export default function ElasticPlanner() {
   const doneBok = calendar
     .filter((b) => b.type === 'creative' && b.status === 'done')
     .reduce((acc, b) => acc + b.duration, 0);
-  const totalBok = [...calendar, ...bank]
+  const totalBok = calendar
     .filter((b) => b.type === 'creative')
     .reduce((acc, b) => acc + b.duration, 0);
   const doneJob = calendar
     .filter((b) => b.type === 'job' && b.status === 'done')
     .reduce((acc, b) => acc + b.duration, 0);
-  const totalJob = [...calendar, ...bank]
+  const totalJob = calendar
     .filter((b) => b.type === 'job')
     .reduce((acc, b) => acc + b.duration, 0);
+
+  // Count points per category for the week
+  const weekPoints = Object.values(points).flat();
+  const pointsByCategory = {
+    training: weekPoints.filter((p) => p.categoryId === 'training').length,
+    job: weekPoints.filter((p) => p.categoryId === 'job').length,
+    creative: weekPoints.filter((p) => p.categoryId === 'creative').length,
+    life: weekPoints.filter((p) => p.categoryId === 'life').length,
+  };
+  const totalWeekPoints = weekPoints.length;
 
   return (
     <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
@@ -593,6 +1757,20 @@ export default function ElasticPlanner() {
                 <ChevronRight size={16} />
               </button>
             </div>
+            <button
+              onClick={() => setCurrentWeekIndex(getCurrentWeek())}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 px-3 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+              aria-label="Hoppa till idag"
+            >
+              Idag
+            </button>
+            <button
+              onClick={() => setReportSidebarOpen(true)}
+              className="text-xs font-bold text-zinc-600 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
+              aria-label="Öppna projektrapport"
+            >
+              📊 Rapport
+            </button>
             <div className="h-6 w-px bg-zinc-200" />
             <div className="flex gap-1">
               <button
@@ -607,12 +1785,34 @@ export default function ElasticPlanner() {
               >
                 <Upload size={14} /> Ladda
               </button>
+              <button
+                onClick={() => setImportModalOpen(true)}
+                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-900 px-2 py-1 hover:bg-blue-50 rounded"
+              >
+                📥 Import
+              </button>
               <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
             </div>
           </div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 items-center">
             <StatPill label="Bok" current={doneBok} total={totalBok} unit="h" />
             <StatPill label="Jobb" current={doneJob} total={totalJob} unit="h" target={24} warnBelowTarget />
+            {totalWeekPoints > 0 && (
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+                  Punkter
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-black tracking-tighter text-yellow-600">{totalWeekPoints}</span>
+                  <div className="flex gap-1 text-[9px]">
+                    {pointsByCategory.training > 0 && <span className="text-red-600">⚡{pointsByCategory.training}</span>}
+                    {pointsByCategory.job > 0 && <span className="text-blue-600">💼{pointsByCategory.job}</span>}
+                    {pointsByCategory.creative > 0 && <span className="text-zinc-900">✏️{pointsByCategory.creative}</span>}
+                    {pointsByCategory.life > 0 && <span className="text-emerald-600">☕{pointsByCategory.life}</span>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -636,20 +1836,20 @@ export default function ElasticPlanner() {
             {DAYS.map((dayName, dIndex) => {
               const isToday = dIndex === todayIndex;
               const dayBlocks = calendar.filter((b) => b.day === dIndex);
-              const dayLogs = logs[dIndex] || [];
-              const groupedLogs = dayLogs.reduce((acc, log) => {
-                const existingGroup = acc.find((g) => Math.abs(g.timestamp - log.timestamp) < 0.25);
+              const dayPoints = points[dIndex] || [];
+              const groupedPoints = dayPoints.reduce((acc, point) => {
+                const existingGroup = acc.find((g) => Math.abs(g.timestamp - point.timestamp) < 0.25);
                 if (existingGroup) {
                   existingGroup.count++;
-                  existingGroup.items.push(log);
+                  existingGroup.items.push(point);
                 } else {
-                  acc.push({ ...log, count: 1, items: [log] });
+                  acc.push({ ...point, count: 1, items: [point] });
                 }
                 return acc;
               }, []);
 
-              const logCount = dayLogs.length;
-              const isSuperDay = logCount >= 4;
+              const pointCount = dayPoints.length;
+              const isSuperDay = pointCount >= 4;
 
               const dayJob = dayBlocks.filter((b) => b.type === 'job');
               const dayBok = dayBlocks.filter((b) => b.type === 'creative');
@@ -664,7 +1864,10 @@ export default function ElasticPlanner() {
                   >
                     <div className="flex items-center justify-between w-full px-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-bold uppercase">{dayName}</span>
+                        <div className="flex flex-col items-start leading-none">
+                          <span className="text-xs font-bold uppercase">{dayName}</span>
+                          <span className="text-[10px] font-normal opacity-70">{formatDate(getDateForDay(currentWeekIndex, dIndex))}</span>
+                        </div>
                         {isToday && !isSuperDay && (
                           <span className="bg-blue-600 text-white text-[8px] font-bold px-1 rounded-sm">IDAG</span>
                         )}
@@ -674,18 +1877,77 @@ export default function ElasticPlanner() {
                           </span>
                         )}
                       </div>
-                      <button
-                        onClick={() => setLogModal({ dayIndex: dIndex })}
-                        className={`p-0.5 rounded transition-all hover:scale-110 ${
-                          logCount > 0 ? 'text-yellow-500 font-bold' : 'text-zinc-300 hover:text-zinc-500'
-                        }`}
-                        aria-label="Öppna logg"
-                      >
-                        <div className="flex items-center">
-                          {logCount > 0 ? logCount : ''}
-                          <Zap size={14} fill={logCount > 0 ? 'currentColor' : 'none'} />
+                      <div className="flex items-center gap-1">
+                        <div className="relative">
+                          <button
+                            onClick={() => setTemplateDropdownDay(templateDropdownDay === dIndex ? null : dIndex)}
+                            className="p-0.5 rounded transition-all hover:scale-110 text-zinc-400 hover:text-zinc-600"
+                            title="Mallar"
+                          >
+                            <FileText size={14} />
+                          </button>
+                          {templateDropdownDay === dIndex && (
+                            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl p-2 w-48 z-[100] border border-zinc-200">
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => {
+                                    const name = prompt('Mallnamn:');
+                                    if (name) {
+                                      saveTemplate(name, dIndex);
+                                      setTemplateDropdownDay(null);
+                                    }
+                                  }}
+                                  className="text-left px-2 py-1.5 hover:bg-zinc-50 rounded text-xs font-bold text-zinc-700"
+                                >
+                                  + Spara som mall
+                                </button>
+                                <div className="border-t border-zinc-100 my-1" />
+                                {Object.keys(listTemplates()).length === 0 ? (
+                                  <div className="text-xs text-zinc-400 italic px-2 py-1">Inga mallar</div>
+                                ) : (
+                                  Object.values(listTemplates()).map((template) => (
+                                    <div key={template.name} className="flex items-center justify-between group/template">
+                                      <button
+                                        onClick={() => applyTemplate(template.name, dIndex)}
+                                        className="flex-grow text-left px-2 py-1.5 hover:bg-blue-50 rounded text-xs font-bold text-zinc-700"
+                                      >
+                                        {template.name}
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (confirm(`Radera mall "${template.name}"?`)) {
+                                            deleteTemplate(template.name);
+                                            setTemplateDropdownDay(null);
+                                          }
+                                        }}
+                                        className="opacity-0 group-hover/template:opacity-100 p-1 text-red-500 hover:text-red-700"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </button>
+                        <button
+                          onClick={() => {
+                            setSelectedLogDay(dIndex);
+                            setLogSidebarOpen(true);
+                          }}
+                          className={`p-0.5 rounded transition-all hover:scale-110 ${
+                            pointCount > 0 ? 'text-yellow-500 font-bold' : 'text-zinc-300 hover:text-zinc-500'
+                          }`}
+                          aria-label="Öppna punkter"
+                        >
+                          <div className="flex items-center">
+                            {pointCount > 0 ? pointCount : ''}
+                            <Zap size={14} fill={pointCount > 0 ? 'currentColor' : 'none'} />
+                          </div>
+                        </button>
+                      </div>
                     </div>
                     <div className="flex gap-1 text-[8px] font-bold opacity-70">
                       <span className={dayBok.some((b) => b.status === 'done') ? 'text-black' : ''}>
@@ -754,7 +2016,7 @@ export default function ElasticPlanner() {
                           onResizeStart={handleResizeStart}
                           onUpdateLabel={(lbl) => {
                             const u = (l) => l.map((b) => (b.id === block.id ? { ...b, label: lbl } : b));
-                            updateCurrentWeek(u(calendar), bank, logs);
+                            updateCurrentWeek(u(calendar), points);
                             setEditingLabelId(null);
                           }}
                           onAction={(action) => {
@@ -768,19 +2030,21 @@ export default function ElasticPlanner() {
                         />
                       ))}
 
-                    {groupedLogs.map((group) => {
+                    {groupedPoints.map((group) => {
                       const category = CATEGORIES[group.categoryId] || CATEGORIES.life;
+                      const isPlanned = group.status === 'planned';
                       return (
                         <div
                           key={group.id}
-                          className="absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center"
+                          className={`absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center ${isPlanned ? 'opacity-40' : ''}`}
                           style={{ top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`, right: '0px' }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setLogModal({ dayIndex: dIndex });
+                            setSelectedLogDay(dIndex);
+                            setLogSidebarOpen(true);
                           }}
                         >
-                          <div className={`bg-white rounded-full p-0.5 shadow-md border relative ${category.borderColor}`}>
+                          <div className={`bg-white rounded-full p-0.5 shadow-md border relative ${category.borderColor} ${isPlanned ? 'border-dashed' : ''}`}>
                             <div className={category.iconColor}>{getCategoryIcon(group.categoryId, 14)}</div>
                             {group.count > 1 && (
                               <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">
@@ -791,7 +2055,9 @@ export default function ElasticPlanner() {
                           <div className="absolute right-full top-0 mr-2 bg-black/90 text-white text-[10px] p-2 rounded w-max opacity-0 group-hover/icon:opacity-100 pointer-events-none z-[70] shadow-xl">
                             <ul className="list-disc pl-3">
                               {group.items.map((item, idx) => (
-                                <li key={idx}>{item.text}</li>
+                                <li key={idx} className={item.status === 'planned' ? 'text-zinc-400' : ''}>
+                                  {item.status === 'planned' ? '○ ' : '● '}{item.text}
+                                </li>
                               ))}
                             </ul>
                           </div>
@@ -802,123 +2068,6 @@ export default function ElasticPlanner() {
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        <div
-          className="flex-none bg-zinc-100 border-t border-zinc-200 p-2 min-h-[80px]"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (!draggedBlock || sourceContainer === 'bank') return;
-            updateCurrentWeek(
-              calendar.filter((b) => b.id !== draggedBlock.id),
-              [...bank, { ...draggedBlock, day: null, start: null }],
-              logs,
-            );
-            setDraggedBlock(null);
-            setDropIndicator(null);
-          }}
-        >
-          <div className="flex gap-2 items-center">
-            <div className="flex flex-col gap-2 items-center mr-2">
-              <span className="text-[10px] font-bold uppercase text-zinc-400 [writing-mode:vertical-rl] rotate-180 flex items-center justify-center h-12 w-4">
-                BANKEN
-              </span>
-
-              <div className="relative micro-menu">
-                <button
-                  onClick={() => setMicroMenuOpen(!microMenuOpen)}
-                  className="w-6 h-6 rounded-full bg-yellow-400 text-yellow-900 flex items-center justify-center hover:scale-110 transition-transform shadow-sm"
-                  title="Lägg till stjärna/prestation"
-                >
-                  <Zap size={14} fill="currentColor" />
-                </button>
-
-                {microMenuOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-xl p-2 w-56 z-[100] animate-in slide-in-from-bottom-2 border border-zinc-200">
-                    <div className="flex justify-between items-center mb-2 px-2 border-b border-zinc-100 pb-1">
-                      <h4 className="text-[10px] font-bold uppercase text-zinc-400">Logga nu ({DAYS[todayIndex]})</h4>
-                      <button onClick={() => setSettingsOpen(true)} className="text-zinc-300 hover:text-zinc-500">
-                        <Settings size={12} />
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-1 mb-3">
-                      {presets.map((preset, i) => {
-                        const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => handleMicroAdd(preset.label, preset.category)}
-                            className="text-left px-2 py-1.5 hover:bg-zinc-50 rounded text-xs font-bold flex items-center gap-2 transition-colors"
-                          >
-                            <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
-                            {preset.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="border-t border-zinc-100 pt-2">
-                      <div className="flex gap-1 mb-2 px-2">
-                        {Object.values(CATEGORIES).map((cat) => (
-                          <button
-                            key={cat.id}
-                            onClick={() => setSelectedMicroCategory(cat.id)}
-                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                              selectedMicroCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
-                            }`}
-                            title={cat.label}
-                          >
-                            {getCategoryIcon(cat.id, 12)}
-                          </button>
-                        ))}
-                      </div>
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const val = e.target.elements.microInput.value;
-                          if (val) {
-                            handleMicroAdd(val, selectedMicroCategory);
-                            e.target.reset();
-                          }
-                        }}
-                        className="flex gap-1"
-                      >
-                        <input
-                          name="microInput"
-                          type="text"
-                          placeholder="Egen aktivitet..."
-                          className="flex-grow bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
-                        />
-                        <button type="submit" className="bg-zinc-900 text-white px-2 py-1 rounded text-xs hover:bg-black">
-                          <Plus size={14} />
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-2 overflow-x-auto pb-2 items-center flex-grow">
-              {bank.length === 0 && <span className="text-xs text-zinc-300 italic">Dra pass hit...</span>}
-              {bank.map((block) => (
-                <div
-                  key={block.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, block, 'bank')}
-                  onClick={(e) => handleBlockClick(e, block.id)}
-                  className={`flex-shrink-0 w-24 h-12 flex flex-col justify-center items-center rounded text-xs cursor-grab shadow-sm border ${
-                    CATEGORIES[block.type].bg
-                  } ${CATEGORIES[block.type].text} ${CATEGORIES[block.type].border} ${
-                    selectedBlockIds.includes(block.id) ? 'ring-2 ring-black' : ''
-                  }`}
-                >
-                  <span className="font-bold truncate w-full text-center px-1">{block.label}</span>
-                  <span className="opacity-70 text-[10px]">{block.duration}h</span>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -941,22 +2090,47 @@ export default function ElasticPlanner() {
       </div>
 
       {addModal && (
-        <div className="add-modal fixed inset-0 bg-black/10 flex items-center justify-center z-[100]" onClick={() => setAddModal(null)}>
-          <div className="bg-white p-3 rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="grid grid-cols-2 gap-2 w-48">
-              {Object.values(CATEGORIES).map((cat) => (
-                <button key={cat.id} onClick={() => addNewBlock(cat.id)} className={`p-2 rounded text-xs font-bold text-left ${cat.bg} ${cat.text}`}>
-                  {cat.label}
-                </button>
-              ))}
+        <div className="add-modal fixed inset-0 bg-black/10 z-[100]" onClick={() => setAddModal(null)}>
+          {!addModal.selectedCategory ? (
+            <div
+              className="absolute bg-white p-2 rounded-lg shadow-xl border border-zinc-200"
+              style={{
+                left: `${85 + (addModal.day * 150)}px`,
+                top: `${150 + ((addModal.hour - 7) * HOUR_HEIGHT * 16)}px`
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex gap-1">
+                {Object.values(CATEGORIES).map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
+                    className={`w-10 h-10 rounded-lg ${cat.bg} ${cat.text} flex items-center justify-center text-xs font-bold hover:scale-110 transition-transform`}
+                    title={cat.label}
+                  >
+                    {cat.label.substring(0, 1)}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
+              <ProjectTaskInput
+                categoryId={addModal.selectedCategory}
+                projectHistory={projectHistory}
+                onSave={(projectName, taskName) => {
+                  addNewBlock(addModal.selectedCategory, projectName, taskName);
+                }}
+                onCancel={() => setAddModal(null)}
+              />
+            </div>
+          )}
         </div>
       )}
 
       {noteModal && (
         <div className="note-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setNoteModal(null)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
             <div className="bg-zinc-50 p-3 border-b border-zinc-100 flex justify-between items-center">
               <h3 className="text-sm font-bold uppercase text-zinc-500">Anteckningar</h3>
               <button onClick={() => setNoteModal(null)} className="text-zinc-400 hover:text-zinc-900">
@@ -964,15 +2138,68 @@ export default function ElasticPlanner() {
               </button>
             </div>
             <div className="p-4">
-              <textarea
-                autoFocus
-                className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-800 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none focus:bg-white"
-                placeholder="Vad ska göras? Hur gick det?"
-                value={noteModal.text}
-                onChange={(e) => setNoteModal({ ...noteModal, text: e.target.value })}
-              />
+              {(() => {
+                const parsed = parseCheckboxes(noteModal.text);
+
+                if (parsed.hasCheckboxes) {
+                  return (
+                    <div className="space-y-2">
+                      {parsed.lines.map((line, idx) => {
+                        if (line.type === 'checkbox') {
+                          return (
+                            <label key={idx} className="flex items-start gap-2 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={line.checked}
+                                onChange={() => {
+                                  const newText = toggleCheckbox(noteModal.text, idx);
+                                  setNoteModal({ ...noteModal, text: newText });
+                                }}
+                                className="mt-0.5 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                              />
+                              <span className={`text-sm ${line.checked ? 'line-through text-zinc-400' : 'text-zinc-800'}`}>
+                                {line.text}
+                              </span>
+                            </label>
+                          );
+                        } else if (line.text.trim()) {
+                          return (
+                            <div key={idx} className="text-sm text-zinc-800 font-medium">
+                              {line.text}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  );
+                }
+
+                return (
+                  <textarea
+                    autoFocus
+                    className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-800 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none focus:bg-white"
+                    placeholder="Vad ska göras? Hur gick det?&#10;&#10;Använd checkboxes:&#10;- [ ] Uppgift 1&#10;- [ ] Uppgift 2"
+                    value={noteModal.text}
+                    onChange={(e) => setNoteModal({ ...noteModal, text: e.target.value })}
+                  />
+                );
+              })()}
             </div>
-            <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end">
+            <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  // Switch between checkbox view and edit view
+                  const parsed = parseCheckboxes(noteModal.text);
+                  if (parsed.hasCheckboxes) {
+                    // Already has checkboxes, show textarea to edit raw markdown
+                    setNoteModal({ ...noteModal, editMode: !noteModal.editMode });
+                  }
+                }}
+                className="text-zinc-600 text-xs hover:text-zinc-900"
+              >
+                {parseCheckboxes(noteModal.text).hasCheckboxes ? '✏️ Redigera' : ''}
+              </button>
               <button
                 onClick={() => updateDescription(noteModal.blockId, noteModal.text)}
                 className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
@@ -984,131 +2211,203 @@ export default function ElasticPlanner() {
         </div>
       )}
 
-      {logModal && (
-        <div className="log-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogModal(null)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-yellow-50 p-4 border-b border-yellow-100 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Zap className="text-yellow-600" size={18} fill="currentColor" />
-                <h3 className="text-lg font-bold text-yellow-900 uppercase tracking-tight">Logg: {DAYS[logModal.dayIndex]}</h3>
-              </div>
-              <button onClick={() => setLogModal(null)} className="text-yellow-700 hover:text-yellow-900">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-4 bg-white min-h-[200px] max-h-[400px] overflow-y-auto">
-              {(logs[logModal.dayIndex] || []).length === 0 ? (
-                <div className="text-center text-zinc-400 italic py-8">Inga aktiviteter loggade än.</div>
-              ) : (
-                <ul className="space-y-2">
-                  {(logs[logModal.dayIndex] || [])
-                    .sort((a, b) => a.timestamp - b.timestamp)
-                    .map((log) => {
-                      const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
-                      const isEditing = editingLogId === log.id;
-                      return (
-                        <li key={log.id} className={`flex flex-col p-2 bg-zinc-50 rounded border border-zinc-100 group border-l-4 ${logCategory.border}`}>
-                          <div className="flex justify-between items-center">
-                            <div
-                              className="flex flex-col flex-grow cursor-pointer"
-                              onClick={() => setEditingLogId(isEditing ? null : log.id)}
-                            >
-                              <span className="text-sm font-medium text-zinc-800">{log.text}</span>
-                              <span className="text-[10px] text-zinc-400 font-mono">
-                                {Math.floor(log.timestamp)}:{Math.round((log.timestamp % 1) * 60)
-                                  .toString()
-                                  .padStart(2, '0')}
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => removeFromLog(logModal.dayIndex, log.id)}
-                              className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                          {isEditing && (
-                            <div className="flex gap-1 mt-2 pt-2 border-t border-zinc-200">
-                              {Object.values(CATEGORIES).map((cat) => (
-                                <button
-                                  key={cat.id}
-                                  onClick={() => updateLogCategory(logModal.dayIndex, log.id, cat.id)}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                                    log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
-                                  }`}
-                                  title={cat.label}
-                                >
-                                  {getCategoryIcon(cat.id, 12)}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-            </div>
-
-            <div className="p-4 bg-zinc-50 border-t border-zinc-100">
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h4>
-              <div className="flex flex-wrap gap-2">
-                {presets.map((preset, i) => {
-                  const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => addToLog(logModal.dayIndex, preset.label, null, preset.category)}
-                      className="bg-white border border-zinc-200 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1 items-center"
-                    >
-                      <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4">
-                <div className="flex gap-1 mb-2">
-                  {Object.values(CATEGORIES).map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedLogCategory(cat.id)}
-                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                        selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
-                      }`}
-                      title={cat.label}
-                    >
-                      {getCategoryIcon(cat.id, 14)}
-                    </button>
-                  ))}
-                </div>
-                <form
-                  className="flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const val = e.target.elements.logInput.value;
-                    if (val) {
-                      addToLog(logModal.dayIndex, val, null, selectedLogCategory);
-                      e.target.reset();
-                    }
-                  }}
-                >
-                  <input
-                    name="logInput"
-                    type="text"
-                    placeholder="Eget..."
-                    className="flex-grow bg-white border border-zinc-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                  />
-                  <button type="submit" className="bg-zinc-900 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-black">
-                    <Plus size={16} />
-                  </button>
-                </form>
-              </div>
-            </div>
+      {/* Log Sidebar - Modernized */}
+      <div
+        className={`log-sidebar fixed top-0 right-0 h-full w-full sm:w-[380px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+          logSidebarOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header - Modern Dark */}
+        <div className="flex-none bg-zinc-900 p-5 border-b border-zinc-800 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="text-white" size={20} />
+            <h3 className="text-lg font-bold text-white tracking-tight">
+              {selectedLogDay !== null ? DAYS[selectedLogDay] : ''}
+            </h3>
           </div>
+          <button onClick={() => setLogSidebarOpen(false)} className="text-zinc-400 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
         </div>
+
+        {/* Point List - Cleaner spacing */}
+        <div className="flex-grow overflow-y-auto p-4 bg-zinc-50">
+          {selectedLogDay !== null && (points[selectedLogDay] || []).length === 0 ? (
+            <div className="text-center text-zinc-400 italic py-12 text-sm">Inga punkter registrerade</div>
+          ) : (
+            selectedLogDay !== null && (
+              <ul className="space-y-2.5">
+                {(points[selectedLogDay] || [])
+                  .sort((a, b) => a.timestamp - b.timestamp)
+                  .map((log) => {
+                    const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
+                    const isEditing = editingLogId === log.id;
+                    const isEditingTime = editingLogTime === log.id;
+                    const hours = Math.floor(log.timestamp);
+                    const minutes = Math.round((log.timestamp % 1) * 60);
+                    const isPlanned = log.status === 'planned';
+                    return (
+                      <li key={log.id} className={`flex flex-col p-3 bg-white rounded-lg shadow-sm border-l-4 ${logCategory.border} group hover:shadow-md transition-shadow ${isPlanned ? 'opacity-60' : ''}`}>
+                        <div className="flex justify-between items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={log.status === 'done'}
+                            onChange={() => togglePointStatus(selectedLogDay, log.id)}
+                            className="mt-1 w-4 h-4 flex-shrink-0 cursor-pointer"
+                            title={isPlanned ? 'Markera som klar' : 'Markera som planerad'}
+                          />
+                          <div
+                            className="flex flex-col flex-grow cursor-pointer min-w-0"
+                            onClick={() => setEditingLogId(isEditing ? null : log.id)}
+                          >
+                            <span className={`text-sm font-semibold leading-tight ${isPlanned ? 'text-zinc-500' : 'text-zinc-900'}`}>{log.text}</span>
+                            {(log.projectName || log.taskName) && (
+                              <span className="text-[11px] text-zinc-500 mt-1">
+                                {log.projectName && log.taskName
+                                  ? `${log.projectName} / ${log.taskName}`
+                                  : log.projectName || log.taskName}
+                              </span>
+                            )}
+                            {isEditingTime ? (
+                              <div className="flex gap-1 items-center mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="number"
+                                  min="7"
+                                  max="23"
+                                  value={hours}
+                                  onChange={(e) => {
+                                    const newHours = Math.max(7, Math.min(23, parseInt(e.target.value) || 0));
+                                    updatePointTime(selectedLogDay, log.id, newHours + minutes / 60);
+                                  }}
+                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-zinc-50 border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
+                                />
+                                <span className="text-xs font-mono text-zinc-400">:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="59"
+                                  value={minutes.toString().padStart(2, '0')}
+                                  onChange={(e) => {
+                                    const newMinutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                                    updatePointTime(selectedLogDay, log.id, hours + newMinutes / 60);
+                                  }}
+                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-zinc-50 border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
+                                />
+                                <button
+                                  onClick={() => setEditingLogTime(null)}
+                                  className="ml-1 text-xs text-green-600 hover:text-green-800 font-bold"
+                                >
+                                  ✓
+                                </button>
+                              </div>
+                            ) : (
+                              <span
+                                className="text-[11px] text-zinc-500 font-mono hover:text-zinc-900 cursor-pointer inline-block mt-1.5 bg-zinc-100 px-2 py-0.5 rounded"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingLogTime(log.id);
+                                }}
+                              >
+                                {hours}:{minutes.toString().padStart(2, '0')}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => removePoint(selectedLogDay, log.id)}
+                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                        {isEditing && (
+                          <div className="flex gap-1.5 mt-3 pt-3 border-t border-zinc-100">
+                            {Object.values(CATEGORIES).map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => updatePointCategory(selectedLogDay, log.id, cat.id)}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                                  log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                                }`}
+                                title={cat.label}
+                              >
+                                {getCategoryIcon(cat.id, 13)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            )
+          )}
+        </div>
+
+        {/* Footer - Add New Log - Modernized */}
+        {selectedLogDay !== null && (
+          <div className="flex-none p-4 bg-white border-t border-zinc-200">
+            <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-wide">Snabbval</h4>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {presets.map((preset, i) => {
+                const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => addToLog(selectedLogDay, preset.label, null, preset.category)}
+                    className="bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1.5 items-center"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-2 mb-3">
+              {Object.values(CATEGORIES).map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedLogCategory(cat.id)}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                    selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-zinc-900` : `${cat.bg} ${cat.text} opacity-50 hover:opacity-100`
+                  }`}
+                  title={cat.label}
+                >
+                  {getCategoryIcon(cat.id, 15)}
+                </button>
+              ))}
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = e.target.elements.logInput.value;
+                if (val) {
+                  addToLog(selectedLogDay, val, null, selectedLogCategory);
+                  e.target.reset();
+                }
+              }}
+            >
+              <input
+                name="logInput"
+                type="text"
+                placeholder="Skriv aktivitet..."
+                className="flex-grow bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-900 focus:bg-white"
+              />
+              <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-black transition-colors shadow-sm">
+                <Plus size={18} />
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+
+      {/* Sidebar Overlay */}
+      {logSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-[105]"
+          onClick={() => setLogSidebarOpen(false)}
+        />
       )}
 
       {logEntryModal && (
@@ -1155,6 +2454,36 @@ export default function ElasticPlanner() {
         </div>
       )}
 
+      {importModalOpen && (
+        <div className="import-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setImportModalOpen(false)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-zinc-700">Importera Plan</h3>
+              <button onClick={() => setImportModalOpen(false)} className="text-zinc-400 hover:text-zinc-900">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="mb-4">
+                <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Tillgängliga Planer</h4>
+                <div
+                  onClick={() => handleImportPlan()}
+                  className="p-3 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded cursor-pointer transition-colors"
+                >
+                  <div className="font-bold text-sm text-zinc-800">10-dagars armhävningsplan</div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    Start: 2026-01-08 • 10 dagar • Training
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-zinc-500 mt-4">
+                Klicka på en plan för att importera den till kalendern. Alla aktiviteter läggs in på rätt datum med checkboxes.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {settingsOpen && (
         <div className="settings-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setSettingsOpen(false)}>
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -1194,6 +2523,15 @@ export default function ElasticPlanner() {
           </div>
         </div>
       )}
+
+      {/* Report Sidebar */}
+      <ReportSidebar
+        open={reportSidebarOpen}
+        onClose={() => setReportSidebarOpen(false)}
+        weeksData={weeksData}
+        currentWeekIndex={currentWeekIndex}
+        categories={CATEGORIES}
+      />
     </div>
   );
 }
@@ -1281,14 +2619,37 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
                       {block.label}
                     </span>
                   </div>
+                  {(block.projectName || block.taskName) && (
+                    <span className="text-[9px] opacity-50 mt-0.5 truncate">
+                      {block.projectName && block.taskName
+                        ? `${block.projectName} / ${block.taskName}`
+                        : block.projectName || block.taskName}
+                    </span>
+                  )}
                   {block.duration >= 0.5 && <span className="text-[9px] opacity-60 font-mono mt-0.5">{block.duration}h</span>}
                 </div>
               )}
             </div>
 
             {block.description && (
-              <div className={`mt-1 text-[9px] leading-tight opacity-70 overflow-hidden text-ellipsis line-clamp-2 ${isDone ? 'line-through' : ''}`}>
-                {block.description}
+              <div className={`mt-1 text-[9px] leading-tight opacity-70 ${isDone ? 'line-through' : ''}`}>
+                {(() => {
+                  const parsed = parseCheckboxes(block.description);
+                  if (parsed.hasCheckboxes) {
+                    const checkedCount = parsed.lines.filter(l => l.type === 'checkbox' && l.checked).length;
+                    const totalCount = parsed.lines.filter(l => l.type === 'checkbox').length;
+                    return (
+                      <span className="font-mono">
+                        ☑️ {checkedCount}/{totalCount}
+                      </span>
+                    );
+                  }
+                  return (
+                    <div className="overflow-hidden text-ellipsis line-clamp-2">
+                      {block.description}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
