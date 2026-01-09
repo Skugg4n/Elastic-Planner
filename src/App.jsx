@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -957,6 +957,7 @@ export default function ElasticPlanner() {
   const [editingLogId, setEditingLogId] = useState(null);
   const [editingLogTime, setEditingLogTime] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [microMenuOpen, setMicroMenuOpen] = useState(false);
   const [dropIndicator, setDropIndicator] = useState(null);
   const [selectedMicroCategory, setSelectedMicroCategory] = useState('life');
@@ -1254,6 +1255,152 @@ export default function ElasticPlanner() {
     setMicroMenuOpen(false);
   };
 
+  const handleImportPlan = () => {
+    // Hardcoded plan content (in future, read from file)
+    const planContent = `# 10-dagars armhävningsplan
+Type: plan
+Start: 2026-01-08
+Repeat: once
+Category: training
+
+## DAG 1
+Armhävningar
+- [x] 2×22 armhävningar
+- [x] Bra. Stäng boken.
+
+## DAG 2
+Armhävningar
+- [ ] 5×12
+- [ ] 60 sek vila
+- [ ] Perfekt form
+
+Rörlighet
+- [ ] Axlar, bröstrygg 5 min
+
+## DAG 3
+Löpning lätt
+- [ ] 20–25 min lugnt
+- [ ] Snacktempo
+
+Armhävningar
+- [ ] 3×15 lugnt
+
+## DAG 4
+Armhävningar volym
+- [ ] 6×10
+- [ ] Kort vila
+- [ ] Sista repsen "nästan jobbiga"
+
+Planka
+- [ ] 2×60–90 sek
+
+## DAG 5
+Löpband intervall
+- [ ] 4×400 m
+- [ ] 12.0 km/h
+- [ ] 90 sek gångvila
+
+Ingen armhävningspress idag
+
+## DAG 6
+Armhävningar
+- [ ] 4×14
+- [ ] Samma tempo hela vägen
+- [ ] Fokus: linje, andning
+
+## DAG 7
+VILA eller mycket lätt
+- [ ] Promenad
+- [ ] Rörlighet
+- [ ] Inga tester
+
+Detta är viktigt. Anpassning sker här.
+
+## DAG 8
+Armhävningar – testdag
+- [ ] Uppvärmning
+- [ ] 1 maxset
+- [ ] Avbryt när tekniken hotas
+
+Mål: 26–30
+
+Oavsett siffra. Klart sen.
+
+## DAG 9
+Löpband skarpt
+- [ ] Uppvärmning som vi pratade om
+- [ ] 11.7 km/h – 2 km
+- [ ] Ingen spurt
+
+## DAG 10
+Lätt armhävningspåminnelse
+- [ ] 3×12
+- [ ] Bara för att hålla nervsystemet "på"`;
+
+    // Parse the plan
+    const { metadata, days } = parsePlanMD(planContent);
+
+    // Parse start date
+    const startDate = new Date(metadata.start);
+
+    // Create blocks for each day
+    const newBlocks = [];
+    days.forEach((day, dayIndex) => {
+      // Calculate the date for this day
+      const dayDate = new Date(startDate);
+      dayDate.setDate(startDate.getDate() + dayIndex);
+
+      // Get day of week (0 = Monday, 6 = Sunday)
+      const dayOfWeek = (dayDate.getDay() + 6) % 7;
+
+      // Get ISO week number for this date
+      const weekNum = getISOWeek(dayDate);
+
+      // Create a block for each section in the day
+      day.sections.forEach((section, sectionIndex) => {
+        const description = section.items.join('\n');
+
+        // Create block
+        const block = {
+          id: `import-${Date.now()}-${dayIndex}-${sectionIndex}`,
+          day: dayOfWeek,
+          start: 8 + sectionIndex, // Stack sections at different hours
+          duration: 1,
+          type: metadata.category,
+          label: section.title,
+          status: 'planned',
+          description: description,
+          projectName: null,
+          taskName: null,
+        };
+
+        newBlocks.push({ block, weekNum });
+      });
+    });
+
+    // Group blocks by week and add them to the appropriate weeks
+    const blocksByWeek = {};
+    newBlocks.forEach(({ block, weekNum }) => {
+      if (!blocksByWeek[weekNum]) {
+        blocksByWeek[weekNum] = [];
+      }
+      blocksByWeek[weekNum].push(block);
+    });
+
+    // Update weeks data
+    const newWeeksData = { ...weeksData };
+    Object.entries(blocksByWeek).forEach(([weekNum, blocks]) => {
+      const weekIndex = parseInt(weekNum);
+      if (!newWeeksData[weekIndex]) {
+        newWeeksData[weekIndex] = { calendar: [], bank: [], logs: {} };
+      }
+      newWeeksData[weekIndex].calendar = [...newWeeksData[weekIndex].calendar, ...blocks];
+    });
+
+    setWeeksData(newWeeksData);
+    setImportModalOpen(false);
+  };
+
   const updateDescription = (blockId, text) => {
     const updateList = (list) => list.map((b) => (b.id === blockId ? { ...b, description: text } : b));
     if (calendar.find((b) => b.id === blockId)) updateCurrentWeek(updateList(calendar), bank, logs);
@@ -1444,6 +1591,12 @@ export default function ElasticPlanner() {
                 className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 px-2 py-1 hover:bg-zinc-100 rounded"
               >
                 <Upload size={14} /> Ladda
+              </button>
+              <button
+                onClick={() => setImportModalOpen(true)}
+                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-900 px-2 py-1 hover:bg-blue-50 rounded"
+              >
+                📥 Import
               </button>
               <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
             </div>
@@ -2154,6 +2307,36 @@ export default function ElasticPlanner() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {importModalOpen && (
+        <div className="import-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setImportModalOpen(false)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-zinc-700">Importera Plan</h3>
+              <button onClick={() => setImportModalOpen(false)} className="text-zinc-400 hover:text-zinc-900">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="mb-4">
+                <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Tillgängliga Planer</h4>
+                <div
+                  onClick={() => handleImportPlan()}
+                  className="p-3 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded cursor-pointer transition-colors"
+                >
+                  <div className="font-bold text-sm text-zinc-800">10-dagars armhävningsplan</div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    Start: 2026-01-08 • 10 dagar • Training
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-zinc-500 mt-4">
+                Klicka på en plan för att importera den till kalendern. Alla aktiviteter läggs in på rätt datum med checkboxes.
+              </div>
+            </div>
           </div>
         </div>
       )}

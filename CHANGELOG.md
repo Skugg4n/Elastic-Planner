@@ -5,6 +5,27 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-01-09
+
+### Added
+- **Import training plans modal**
+  - New "📥 Import" button in header
+  - Modal showing available training plans
+  - One-click import of 10-dagars armhävningsplan
+  - Automatically creates blocks across multiple weeks
+
+- **Import plan logic**
+  - Reads and parses MD training plans
+  - Calculates correct dates from start date
+  - Maps activities to correct days and weeks
+  - Creates blocks with checkboxes intact
+  - Handles multi-section days (multiple activities per day)
+
+### Technical
+- **Why**: User has a 10-day training plan and needs to quickly get it into the calendar
+- **Solution**: Import modal + logic to parse MD files and create calendar blocks
+- **Impact**: Training plans can now be imported in one click instead of manual entry
+
 ## [1.7.0] - 2026-01-08 12:37 UTC
 
 ### Added
