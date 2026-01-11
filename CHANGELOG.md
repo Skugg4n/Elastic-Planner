@@ -5,6 +5,36 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-01-09
+
+### Added - HOTFIX
+- **Floating Action Button (FAB)** for adding points
+  - Yellow ⚡ button in bottom-right corner
+  - Opens modal for creating new points
+
+- **Add Point Modal**
+  - Text input for activity description
+  - Time picker (HH:MM format) with smart status detection
+  - Automatic status: future time → 'planned', past/current → 'done'
+  - Live preview showing if point will be planned or done
+  - Category selector with visual buttons
+  - Preset quick-select buttons
+
+- **Preset Integration**
+  - All presets from settings available in modal
+  - Click preset → fills text and category
+  - User can then adjust time before creating
+
+### Fixed
+- **Critical UX Issue**: No way to create new points after Bank removal in v1.8.0
+  - Bank section removal inadvertently removed the micro-menu with presets
+  - Users had no UI to add points despite backend functionality existing
+  - FAB + modal restores and improves this functionality
+
+### Technical
+- **Why**: v1.8.0 removed Bank UI which contained the micro-menu for adding points
+- **Impact**: Restored critical functionality with improved UX (floating button + proper time picker)
+
 ## [1.8.0] - 2026-01-09
 
 ### 🎉 MAJOR ARCHITECTURE REFACTOR - "Points System"
