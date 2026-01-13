@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, FileText, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1052,6 +1052,10 @@ export default function ElasticPlanner() {
   const [dropIndicator, setDropIndicator] = useState(null);
   const [selectedMicroCategory, setSelectedMicroCategory] = useState('life');
   const [selectedLogCategory, setSelectedLogCategory] = useState('life');
+  const [addPointModalOpen, setAddPointModalOpen] = useState(false);
+  const [pointText, setPointText] = useState('');
+  const [pointTime, setPointTime] = useState('');
+  const [pointCategory, setPointCategory] = useState('life');
   const [currentTime, setCurrentTime] = useState(() => {
     const now = new Date();
     return now.getHours() + now.getMinutes() / 60;
@@ -1404,6 +1408,34 @@ export default function ElasticPlanner() {
   const handleMicroAdd = (label, categoryId = 'life') => {
     addPoint(todayIndex, label, null, categoryId);
     setMicroMenuOpen(false);
+  };
+
+  const handleCreatePoint = () => {
+    if (!pointText.trim()) return;
+
+    // Parse time (HH:MM format) to decimal
+    let timestamp;
+    if (pointTime) {
+      const [hours, minutes] = pointTime.split(':').map(Number);
+      timestamp = hours + minutes / 60;
+    } else {
+      // Default to current time
+      timestamp = currentTime;
+    }
+
+    // Determine status based on time
+    const now = new Date();
+    const currentHour = now.getHours() + now.getMinutes() / 60;
+    const status = timestamp > currentHour ? 'planned' : 'done';
+
+    // Create point
+    addPoint(todayIndex, pointText, timestamp, pointCategory, status);
+
+    // Reset modal
+    setPointText('');
+    setPointTime('');
+    setPointCategory('life');
+    setAddPointModalOpen(false);
   };
 
   const handleImportPlan = () => {
@@ -2532,6 +2564,129 @@ Lätt armhävningspåminnelse
         currentWeekIndex={currentWeekIndex}
         categories={CATEGORIES}
       />
+
+      {/* Floating Action Button - Add Point */}
+      <button
+        onClick={() => setAddPointModalOpen(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] transition-all hover:scale-110 active:scale-95"
+        title="Lägg till punkt"
+      >
+        <Zap size={24} fill="currentColor" />
+      </button>
+
+      {/* Add Point Modal */}
+      {addPointModalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200]" onClick={() => setAddPointModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-zinc-900">Lägg till punkt</h2>
+              <button onClick={() => setAddPointModalOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Presets */}
+            <div className="mb-4">
+              <h3 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {presets.map((preset, i) => {
+                  const presetCat = CATEGORIES[preset.category] || CATEGORIES.life;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setPointText(preset.label);
+                        setPointCategory(preset.category);
+                      }}
+                      className={`px-3 py-2 rounded-lg text-sm font-bold transition-colors ${presetCat.bg} ${presetCat.text} hover:opacity-80`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Input Form */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-zinc-700 mb-1">Aktivitet</label>
+                <input
+                  type="text"
+                  value={pointText}
+                  onChange={(e) => setPointText(e.target.value)}
+                  placeholder="T.ex. Armhävningar"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:border-yellow-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-zinc-700 mb-1">Tid</label>
+                <input
+                  type="time"
+                  value={pointTime}
+                  onChange={(e) => setPointTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:border-yellow-500"
+                />
+                <p className="text-xs text-zinc-500 mt-1">
+                  {pointTime ? (
+                    <>
+                      {(() => {
+                        const [hours, minutes] = pointTime.split(':').map(Number);
+                        const selectedTime = hours + minutes / 60;
+                        const now = new Date();
+                        const currentHour = now.getHours() + now.getMinutes() / 60;
+                        return selectedTime > currentHour ?
+                          <span className="text-blue-600 font-bold">→ Planerad (framtid)</span> :
+                          <span className="text-green-600 font-bold">→ Klar (nu/tidigare)</span>;
+                      })()}
+                    </>
+                  ) : (
+                    'Lämna tom för nuvarande tid'
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-zinc-700 mb-2">Kategori</label>
+                <div className="flex gap-2">
+                  {Object.values(CATEGORIES).map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setPointCategory(cat.id)}
+                      className={`flex-1 py-2 rounded-lg font-bold transition-all ${
+                        pointCategory === cat.id
+                          ? `${cat.bg} ${cat.text} ring-2 ring-offset-2 ring-zinc-400`
+                          : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                      }`}
+                    >
+                      {getCategoryIcon(cat.id, 20)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setAddPointModalOpen(false)}
+                className="flex-1 px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-bold rounded-lg transition-colors"
+              >
+                Avbryt
+              </button>
+              <button
+                onClick={handleCreatePoint}
+                disabled={!pointText.trim()}
+                className="flex-1 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Lägg till
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
