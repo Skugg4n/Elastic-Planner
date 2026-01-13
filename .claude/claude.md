@@ -54,6 +54,26 @@ git checkout <correct-feature-branch>
 # Cherry-pick or recreate changes here
 ```
 
+### When PR Gets Stuck or Outdated
+If a PR exists but doesn't show your latest changes OR you can't figure out why changes aren't appearing:
+
+**DON'T:**
+- ❌ Spend time debugging why the PR doesn't show changes
+- ❌ Try to update the existing PR multiple times
+- ❌ Argue with the user about whether code is pushed
+
+**DO:**
+1. ✅ Create a NEW branch with a slightly different name:
+   ```bash
+   git checkout -b claude/hotfix-vXXX-0OARk  # Or similar unique name
+   git push -u origin claude/hotfix-vXXX-0OARk
+   ```
+2. ✅ GitHub will show you the PR creation link - share it with user
+3. ✅ User creates new PR and merges it
+4. ✅ Done in 30 seconds instead of 30 minutes of confusion
+
+**Why this works:** Fresh branch = fresh PR = no confusion about what's included
+
 ### Key Insight
 Protected branches exist for a reason - respect them. The workflow is:
 **Feature Branch → Push → PR → Manual Merge → Production**
