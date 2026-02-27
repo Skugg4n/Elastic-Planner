@@ -5,6 +5,52 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-02-27
+
+### Added
+
+#### Feature: Parallel Blocks (50/50 Split)
+- **Parallel Blocks**: Users can now work on two activities simultaneously in the same time slot by creating parallel blocks that render side-by-side (50/50 width)
+- **New Action Button**: "Parallell" button (with SplitSquareHorizontal icon) added to block action menu
+- **Creating Parallel Blocks**:
+  - Click "Parallell" on any block to create a new block sharing the same time slot
+  - New block has same day, start time, and duration as original
+  - Gets default category (first available, or 'life')
+  - Label: "Parallell"
+  - Status: same as original block
+  - Both blocks get assigned a shared `parallelId`
+- **Side-by-Side Rendering**:
+  - Blocks with same `parallelId` render at 50% width each
+  - Left block (first by start time or ID): left:2px, right:50%
+  - Right block (second by start time or ID): left:50%, right:2px
+- **Unlinking Parallel Blocks**:
+  - **When dragged**: Automatically removes `parallelId` (unlinks from partner)
+  - **When deleted**: Also removes `parallelId` from partner block (makes it full-width again)
+- **Time Accounting**: Both parallel blocks count their FULL duration for time tracking (not split)
+- **Collision Resolution**: Updated `resolveCollisions()` to skip blocks sharing same `parallelId` (they intentionally overlap)
+- **Data Model**: Added optional `parallelId: string | null` field to block structure
+
+### Technical
+
+- **Version bumped**: 1.11.0 → 1.12.0
+- **Icon added**: `SplitSquareHorizontal` imported from lucide-react
+- **New migration**: `migrateParallelId()` adds `parallelId: null` to existing blocks
+- **Modified Block component**: Now accepts `isParallel` and `parallelPosition` props for positioning
+- **New function**: `createParallelBlock(block)` - Creates paired parallel block with shared ID
+- **Modified**: `resolveCollisions()` - Skips collision detection for blocks with shared `parallelId`
+- **Modified**: Block action handler - "parallel" action, enhanced "delete" to unlink partners
+- **Modified**: `handleDragStart()` - Removes `parallelId` when dragging parallel blocks
+- **Updated block rendering logic**: Calculates parallel position and passes to Block component
+- **Modified**: Duplicate action now includes `parallelId: null` for new blocks
+- **New localStorage**: `parallelId` persisted in block data
+
+### Why These Changes?
+
+- **Simultaneous Work**: Users can now accurately represent working on multiple projects simultaneously (e.g., job + book project for the same 2 hours)
+- **Realistic Time Tracking**: Both activities count full time because user genuinely worked on both in parallel
+- **Natural Unlinking**: Dragging a parallel block away automatically unlinks it; deleting one unlinks the partner too
+- **Clean Visual**: 50/50 split clearly shows two concurrent activities without creating collision complexity
+
 ## [1.11.0] - 2026-02-27
 
 ### Added

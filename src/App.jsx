@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -459,6 +459,23 @@ const migrateLogsToPoints = (weeksData) => {
   return migratedData;
 };
 
+const migrateParallelId = (weeksData) => {
+  // v1.11.0 -> v1.12.0: Add parallelId field to blocks
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    migratedData[weekId] = {
+      calendar: (weekData.calendar || []).map((block) => ({
+        ...block,
+        parallelId: block.parallelId || null,
+      })),
+      points: weekData.points || {},
+    };
+  }
+
+  return migratedData;
+};
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -471,6 +488,7 @@ const getInitialWeeksData = () => {
         migrated = migrateToProjectTracking(migrated);
         migrated = migrateBankRemoval(migrated);
         migrated = migrateLogsToPoints(migrated);
+        migrated = migrateParallelId(migrated);
         return migrated;
       }
     } catch (e) {
@@ -1374,6 +1392,10 @@ export default function ElasticPlanner() {
         for (let j = i + 1; j < blocks.length; j++) {
           const b2 = blocks[j];
           if (b1.day === b2.day) {
+            // Skip collision resolution for parallel blocks (they share a parallelId)
+            if (b1.parallelId && b1.parallelId === b2.parallelId) {
+              continue;
+            }
             const b1End = b1.start + b1.duration;
             if (b2.start < b1End) {
               b2.start = b1End;
@@ -1581,6 +1603,39 @@ export default function ElasticPlanner() {
     const newCalendar = calendar.filter((b) => b.id !== block.id);
     newCalendar.push(part1, part2);
     updateCurrentWeek(resolveCollisions(newCalendar, part1), points);
+    setSelectedBlockIds([]);
+  };
+
+  const createParallelBlock = (block) => {
+    // Create a shared parallelId for both blocks
+    const parallelId = `parallel-${Date.now()}`;
+
+    // Get the first available category (or 'life' as fallback)
+    const defaultCategory = Object.keys(categories).length > 0 ? Object.keys(categories)[0] : 'life';
+
+    // Create new parallel block with same day, start, duration as original
+    const newBlock = {
+      id: `block-${Date.now()}-${Math.random()}`,
+      day: block.day,
+      start: block.start,
+      duration: block.duration,
+      type: defaultCategory,
+      label: 'Parallell',
+      status: block.status,
+      description: '',
+      projectName: null,
+      taskName: null,
+      parallelId: parallelId,
+    };
+
+    // Update original block to have the same parallelId
+    const updatedBlock = { ...block, parallelId: parallelId };
+
+    // Replace original block and add new block (don't run resolveCollisions for parallel blocks)
+    const newCalendar = calendar.map((b) => b.id === block.id ? updatedBlock : b);
+    newCalendar.push(newBlock);
+
+    updateCurrentWeek(newCalendar, points);
     setSelectedBlockIds([]);
   };
 
@@ -2285,36 +2340,77 @@ Lätt armhävningspåminnelse
 
                     {calendar
                       .filter((b) => b.day === dIndex)
-                      .map((block) => (
-                        <Block
-                          key={block.id}
-                          block={block}
-                          isSelected={selectedBlockIds.includes(block.id)}
-                          isEditing={editingLabelId === block.id}
-                          onClick={(e) => handleBlockClick(e, block.id)}
-                          onDragStart={(e) => handleDragStart(e, block)}
-                          onResizeStart={handleResizeStart}
-                          categories={categories}
-                          onUpdateLabel={(lbl) => {
-                            const u = (l) => l.map((b) => (b.id === block.id ? { ...b, label: lbl } : b));
-                            updateCurrentWeek(u(calendar), points);
-                            setEditingLabelId(null);
-                          }}
-                          onAction={(action) => {
-                            if (action === 'toggle') toggleStatus(block.id);
-                            if (action === 'split') splitBlock(block);
-                            if (action === 'duplicate') {
-                              const newBlock = { ...block, id: `block-${Date.now()}`, start: block.start + block.duration, status: 'planned' };
-                              updateCurrentWeek(resolveCollisions([...calendar, newBlock], newBlock), points);
+                      .map((block) => {
+                        // Determine if this is a parallel block and its position
+                        let isParallel = false;
+                        let parallelPosition = null;
+
+                        if (block.parallelId) {
+                          isParallel = true;
+                          // Find the partner block to determine order
+                          const partner = calendar.find(b => b.id !== block.id && b.parallelId === block.parallelId && b.day === dIndex);
+                          if (partner) {
+                            // Compare by start time, then by ID for tie-breaking
+                            if (block.start < partner.start || (block.start === partner.start && block.id < partner.id)) {
+                              parallelPosition = 'left';
+                            } else {
+                              parallelPosition = 'right';
                             }
-                            if (action === 'tobank') addToBank(block.id);
-                            if (action === 'edit') setEditingLabelId(block.id);
-                            if (action === 'delete') deleteBlock(block.id);
-                            if (action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
-                            if (action === 'log') setLogEntryModal({ dayIndex: block.day, categoryId: block.type, blockStart: block.start });
-                          }}
-                        />
-                      ))}
+                          }
+                        }
+
+                        return (
+                          <Block
+                            key={block.id}
+                            block={block}
+                            isSelected={selectedBlockIds.includes(block.id)}
+                            isEditing={editingLabelId === block.id}
+                            isParallel={isParallel}
+                            parallelPosition={parallelPosition}
+                            onClick={(e) => handleBlockClick(e, block.id)}
+                            onDragStart={(e) => {
+                              // Remove parallelId when dragging
+                              const unlinkedBlock = { ...block, parallelId: null };
+                              handleDragStart(e, unlinkedBlock);
+                            }}
+                            onResizeStart={handleResizeStart}
+                            categories={categories}
+                            onUpdateLabel={(lbl) => {
+                              const u = (l) => l.map((b) => (b.id === block.id ? { ...b, label: lbl } : b));
+                              updateCurrentWeek(u(calendar), points);
+                              setEditingLabelId(null);
+                            }}
+                            onAction={(action) => {
+                              if (action === 'toggle') toggleStatus(block.id);
+                              if (action === 'split') splitBlock(block);
+                              if (action === 'parallel') createParallelBlock(block);
+                              if (action === 'duplicate') {
+                                const newBlock = { ...block, id: `block-${Date.now()}`, start: block.start + block.duration, status: 'planned', parallelId: null };
+                                updateCurrentWeek(resolveCollisions([...calendar, newBlock], newBlock), points);
+                              }
+                              if (action === 'tobank') addToBank(block.id);
+                              if (action === 'edit') setEditingLabelId(block.id);
+                              if (action === 'delete') {
+                                // If block has a parallelId, also remove the parallelId from its partner
+                                if (block.parallelId) {
+                                  const partner = calendar.find(b => b.id !== block.id && b.parallelId === block.parallelId);
+                                  if (partner) {
+                                    const updatedPartner = { ...partner, parallelId: null };
+                                    const filtered = calendar.filter(b => b.id !== block.id);
+                                    updateCurrentWeek(filtered.map(b => b.id === partner.id ? updatedPartner : b), points);
+                                  } else {
+                                    deleteBlock(block.id);
+                                  }
+                                } else {
+                                  deleteBlock(block.id);
+                                }
+                              }
+                              if (action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
+                              if (action === 'log') setLogEntryModal({ dayIndex: block.day, categoryId: block.type, blockStart: block.start });
+                            }}
+                          />
+                        );
+                      })}
 
                     {groupedPoints.map((group) => {
                       const category = categories[group.categoryId] || categories.life || Object.values(categories)[0];
@@ -3240,7 +3336,7 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget, cumFle
   );
 }
 
-function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel, categories = DEFAULT_CATEGORIES }) {
+function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel, categories = DEFAULT_CATEGORIES, isParallel = false, parallelPosition = null }) {
   const cat = categories[block.type];
   const isDone = block.status === 'done';
   const isInactive = block.status === 'inactive';
@@ -3252,12 +3348,26 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
     if (isEditing && inputRef.current) inputRef.current.focus();
   }, [isEditing]);
 
+  // Calculate positioning for parallel blocks
+  let positionStyle = { top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` };
+
+  if (isParallel && parallelPosition === 'left') {
+    positionStyle.left = '2px';
+    positionStyle.right = '50%';
+  } else if (isParallel && parallelPosition === 'right') {
+    positionStyle.left = '50%';
+    positionStyle.right = '2px';
+  }
+
   if (isInactive)
     return (
       <div
         onClick={() => onAction('toggle')}
-        className="absolute left-1 right-1 border-2 border-dashed border-zinc-300 text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400"
-        style={{ top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` }}
+        className="absolute border-2 border-dashed border-zinc-300 text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400"
+        style={{
+          ...positionStyle,
+          ...(isParallel ? {} : { left: '4px', right: '4px' })
+        }}
       >
         {block.label}
       </div>
@@ -3270,11 +3380,14 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
         onDragStart={onDragStart}
         onClick={onClick}
         className={`
-        block-interactive absolute left-1 right-1 z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2
+        block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2
         ${isDone ? cat.doneStyle : `${cat.bg} ${cat.text} ${cat.border}`}
         ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}
       `}
-        style={{ top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` }}
+        style={{
+          ...positionStyle,
+          ...(isParallel ? {} : { left: '4px', right: '4px' })
+        }}
       >
         <div className="flex justify-between items-start p-1.5 h-full relative">
           <div className="flex flex-col w-full h-full">
@@ -3407,8 +3520,19 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
               onAction('split');
             }}
             className="p-1 hover:bg-white/20 rounded"
+            title="Dela block"
           >
             <Scissors size={12} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction('parallel');
+            }}
+            className="p-1 hover:bg-white/20 rounded"
+            title="Parallell block"
+          >
+            <SplitSquareHorizontal size={12} />
           </button>
           <button
             onClick={(e) => {
