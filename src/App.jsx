@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.14.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1102,7 +1102,15 @@ export default function ElasticPlanner() {
   const [categories, setCategories] = useState(() => {
     try {
       const saved = localStorage.getItem(CATEGORIES_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Fix corrupted category IDs (bug in v1.9.0-1.13.0 where COLOR_PALETTE.id overwrote category.id)
+        const fixed = {};
+        Object.entries(parsed).forEach(([key, cat]) => {
+          fixed[key] = { ...cat, id: key };
+        });
+        return fixed;
+      }
     } catch (e) {}
     return DEFAULT_CATEGORIES;
   });
@@ -2076,8 +2084,8 @@ Lätt armhävningspåminnelse
     reader.readAsText(file);
   };
 
-  // Count points per category for the week
-  const weekPoints = Object.values(points).flat();
+  // Count points per category for the week (defensive: ensure each day's value is an array)
+  const weekPoints = Object.values(points || {}).filter(Array.isArray).flat();
   const pointsByCategory = Object.keys(categories).reduce((acc, catId) => {
     acc[catId] = weekPoints.filter((p) => p.categoryId === catId).length;
     return acc;
@@ -3228,12 +3236,13 @@ Lätt armhävningspåminnelse
                             <button
                               key={color.id}
                               onClick={() => {
+                                const { id: _cid, ...colorStyle } = color;
                                 setCategories(prev => ({
                                   ...prev,
-                                  [cat.id]: { ...prev[cat.id], ...color }
+                                  [cat.id]: { ...prev[cat.id], ...colorStyle }
                                 }));
                               }}
-                              className={`w-5 h-5 rounded-full ${color.bg} border-2 ${cat.id === color.id && cat.bg === color.bg ? 'border-black' : 'border-transparent'}`}
+                              className={`w-5 h-5 rounded-full ${color.bg} border-2 ${cat.bg === color.bg ? 'border-black' : 'border-transparent'}`}
                               title={color.id}
                             />
                           ))}
@@ -3307,6 +3316,7 @@ Lätt armhävningspåminnelse
               <button
                 onClick={() => {
                   const newId = `custom-${Date.now()}`;
+                  const { id: _colorId, ...colorProps } = COLOR_PALETTE[0];
                   setCategories(prev => ({
                     ...prev,
                     [newId]: {
@@ -3315,7 +3325,7 @@ Lätt armhävningspåminnelse
                       icon: 'Star',
                       targetHoursPerWeek: null,
                       weeklyGoalPoints: null,
-                      ...COLOR_PALETTE[0]
+                      ...colorProps
                     }
                   }));
                 }}

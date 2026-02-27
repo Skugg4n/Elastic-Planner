@@ -5,6 +5,14 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-02-27
+
+### Fixed - CRITICAL
+- **Category ID corruption**: Fixed bug where `COLOR_PALETTE[0].id` ('zinc-900') would overwrite custom category IDs when creating or changing color. This caused custom categories to break. Added migration that repairs corrupted IDs on load.
+- **Color selection also corrupted**: Same bug existed when clicking a color in category settings — the color's `id` field would overwrite the category's `id`.
+- **Defensive weekPoints**: Added guard against corrupted points data (`Object.values(points).filter(Array.isArray).flat()`)
+- **Color active indicator**: Fixed the visual indicator for which color is currently selected (no longer depends on matching `id` fields)
+
 ## [1.14.0] - 2026-02-27
 
 ### Added
