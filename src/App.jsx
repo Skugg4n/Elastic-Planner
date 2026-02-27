@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Copy, Edit3, FileText, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.9.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -88,6 +88,13 @@ const getCategoryIcon = (categoryId, size = 14, categories = DEFAULT_CATEGORIES)
     'Zap': <Zap size={size} fill="currentColor" />,
     'Coffee': <Coffee size={size} />,
     'Star': <Star size={size} />,
+    'Heart': <Heart size={size} />,
+    'Music': <Music size={size} />,
+    'Book': <Book size={size} />,
+    'Code': <Code size={size} />,
+    'Dumbbell': <Dumbbell size={size} />,
+    'Bike': <Bike size={size} />,
+    'Palette': <Palette size={size} />,
   };
 
   return iconMap[iconName] || <Star size={size} />;
@@ -1813,12 +1820,10 @@ Lätt armhävningspåminnelse
 
   // Count points per category for the week
   const weekPoints = Object.values(points).flat();
-  const pointsByCategory = {
-    training: weekPoints.filter((p) => p.categoryId === 'training').length,
-    job: weekPoints.filter((p) => p.categoryId === 'job').length,
-    creative: weekPoints.filter((p) => p.categoryId === 'creative').length,
-    life: weekPoints.filter((p) => p.categoryId === 'life').length,
-  };
+  const pointsByCategory = Object.keys(categories).reduce((acc, catId) => {
+    acc[catId] = weekPoints.filter((p) => p.categoryId === catId).length;
+    return acc;
+  }, {});
   const totalWeekPoints = weekPoints.length;
 
   return (
@@ -1945,8 +1950,11 @@ Lätt armhävningspåminnelse
               const pointCount = dayPoints.length;
               const isSuperDay = pointCount >= 4;
 
-              const dayJob = dayBlocks.filter((b) => b.type === 'job');
-              const dayBok = dayBlocks.filter((b) => b.type === 'creative');
+              const dayCategoryStats = Object.entries(categories).map(([catId, cat]) => {
+                const blocks = dayBlocks.filter((b) => b.type === catId);
+                const doneHours = blocks.filter(b => b.status === 'done').reduce((a, b) => a + b.duration, 0);
+                return { catId, label: cat.label, blocks, doneHours, hasDone: blocks.some(b => b.status === 'done') };
+              }).filter(s => s.blocks.length > 0);
 
               return (
                 <div
@@ -2044,12 +2052,11 @@ Lätt armhävningspåminnelse
                       </div>
                     </div>
                     <div className="flex gap-1 text-[8px] font-bold opacity-70">
-                      <span className={dayBok.some((b) => b.status === 'done') ? 'text-black' : ''}>
-                        B:{dayBok.reduce((a, b) => a + (b.status === 'done' ? b.duration : 0), 0)}h
-                      </span>
-                      <span className={dayJob.some((b) => b.status === 'done') ? 'text-black' : ''}>
-                        J:{dayJob.reduce((a, b) => a + (b.status === 'done' ? b.duration : 0), 0)}h
-                      </span>
+                      {dayCategoryStats.map(s => (
+                        <span key={s.catId} className={s.hasDone ? 'text-black' : ''}>
+                          {s.label.substring(0, 1)}:{s.doneHours}h
+                        </span>
+                      ))}
                     </div>
                   </div>
 
@@ -2642,6 +2649,28 @@ Lätt armhävningspåminnelse
                               className={`w-5 h-5 rounded-full ${color.bg} border-2 ${cat.id === color.id && cat.bg === color.bg ? 'border-black' : 'border-transparent'}`}
                               title={color.id}
                             />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 items-center mb-2">
+                        <span className="text-xs font-bold text-zinc-600">Ikon:</span>
+                        <div className="flex gap-1 flex-wrap">
+                          {ICON_OPTIONS.map(iconName => (
+                            <button
+                              key={iconName}
+                              onClick={() => {
+                                setCategories(prev => ({
+                                  ...prev,
+                                  [cat.id]: { ...prev[cat.id], icon: iconName }
+                                }));
+                              }}
+                              className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
+                                cat.icon === iconName ? 'bg-zinc-900 text-white ring-2 ring-zinc-400' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                              }`}
+                              title={iconName}
+                            >
+                              {getCategoryIcon(cat.id, 12, { [cat.id]: { ...cat, icon: iconName } })}
+                            </button>
                           ))}
                         </div>
                       </div>

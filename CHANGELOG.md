@@ -5,6 +5,14 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-02-27
+
+### Fixed (Code Review Findings)
+- **Missing icons**: Added all 12 icons to getCategoryIcon (Heart, Music, Book, Code, Dumbbell, Bike, Palette were missing)
+- **Icon selector in settings**: Added icon picker UI so users can change category icons
+- **Day header stats dynamic**: Day headers now show stats for ALL categories, not just hardcoded Bok/Jobb
+- **Points by category dynamic**: Points counter now supports custom categories instead of hardcoded 4
+
 ## [1.9.0] - 2026-02-27
 
 ### 🎉 THREE MAJOR FEATURES ADDED
