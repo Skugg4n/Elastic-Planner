@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1112,6 +1112,7 @@ export default function ElasticPlanner() {
   const [editingLabelId, setEditingLabelId] = useState(null);
   const [addModal, setAddModal] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
+  const [editBlockModal, setEditBlockModal] = useState(null);
   const [logSidebarOpen, setLogSidebarOpen] = useState(false);
   const [selectedLogDay, setSelectedLogDay] = useState(null);
   const [logEntryModal, setLogEntryModal] = useState(null);
@@ -1573,7 +1574,7 @@ export default function ElasticPlanner() {
       if (dropIndicator?.type !== 'resize') return;
       const block = calendar.find((b) => b.id === dropIndicator.id);
       if (block) {
-        const newCalendar = resolveCollisions(calendar, block);
+        const newCalendar = autoParallelize(calendar, block);
         updateCurrentWeek(newCalendar, points);
       }
       setDraggedBlock(null);
@@ -1959,6 +1960,42 @@ Lätt armhävningspåminnelse
     }
   };
 
+  // Auto-parallelize: find overlapping blocks on the same day and make them parallel pairs
+  const autoParallelize = (allBlocks, movedBlock) => {
+    let blocks = [...allBlocks];
+    const movedEnd = movedBlock.start + movedBlock.duration;
+
+    // Find blocks on the same day that overlap with movedBlock (excluding itself and already-parallel partners)
+    const overlapping = blocks.filter((b) =>
+      b.id !== movedBlock.id &&
+      b.day === movedBlock.day &&
+      !(b.parallelId && b.parallelId === movedBlock.parallelId) &&
+      b.start < movedEnd &&
+      (b.start + b.duration) > movedBlock.start
+    );
+
+    if (overlapping.length > 0) {
+      // Take the first overlapping block and make them parallel
+      const partner = overlapping[0];
+      const parallelId = `parallel-${Date.now()}`;
+
+      blocks = blocks.map((b) => {
+        if (b.id === movedBlock.id) return { ...b, parallelId };
+        if (b.id === partner.id) return { ...b, parallelId };
+        return b;
+      });
+
+      // For any remaining overlapping blocks beyond the first, still resolve collisions
+      if (overlapping.length > 1) {
+        blocks = resolveCollisions(blocks, movedBlock);
+      }
+      return blocks;
+    }
+
+    // No overlap – just resolve collisions normally
+    return resolveCollisions(blocks, movedBlock);
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     if (!draggedBlock || !dropIndicator || dropIndicator.type === 'resize') return;
@@ -1983,16 +2020,26 @@ Lätt armhävningspåminnelse
       return;
     }
 
-    let newCalendar = calendar.filter((b) => b.id !== draggedBlock.id);
+    // Remove parallelId when dragging (unlink from old partner)
+    const unlinkedBlock = { ...draggedBlock, parallelId: null };
+
+    // Also unlink old partner if it existed
+    let newCalendar = calendar.map((b) => {
+      if (b.id === draggedBlock.id) return null; // will be re-added
+      if (draggedBlock.parallelId && b.parallelId === draggedBlock.parallelId) {
+        return { ...b, parallelId: null };
+      }
+      return b;
+    }).filter(Boolean);
 
     if (dropIndicator.type === 'merge') {
       const target = newCalendar.find((b) => b.id === dropIndicator.targetBlockId);
-      if (target) target.duration += draggedBlock.duration;
+      if (target) target.duration += unlinkedBlock.duration;
       newCalendar = resolveCollisions(newCalendar, target);
     } else {
-      const newBlock = { ...draggedBlock, day: dropIndicator.day, start: dropIndicator.hour };
+      const newBlock = { ...unlinkedBlock, day: dropIndicator.day, start: dropIndicator.hour };
       newCalendar.push(newBlock);
-      newCalendar = resolveCollisions(newCalendar, newBlock);
+      newCalendar = autoParallelize(newCalendar, newBlock);
     }
 
     updateCurrentWeek(newCalendar, points);
@@ -2439,7 +2486,20 @@ Lätt armhävningspåminnelse
                                 updateCurrentWeek(resolveCollisions([...calendar, newBlock], newBlock), points);
                               }
                               if (action === 'tobank') addToBank(block.id);
-                              if (action === 'edit') setEditingLabelId(block.id);
+                              if (action === 'edit') {
+                                setEditBlockModal({
+                                  blockId: block.id,
+                                  label: block.label || '',
+                                  description: block.description || '',
+                                  type: block.type,
+                                  status: block.status,
+                                  start: block.start,
+                                  duration: block.duration,
+                                  projectName: block.projectName || '',
+                                  taskName: block.taskName || '',
+                                });
+                                setSelectedBlockIds([]);
+                              }
                               if (action === 'delete') {
                                 // If block has a parallelId, also remove the parallelId from its partner
                                 if (block.parallelId) {
@@ -2642,6 +2702,207 @@ Lätt armhävningspåminnelse
           </div>
         </div>
       )}
+
+      {/* Edit Block Modal */}
+      {editBlockModal && (() => {
+        const formatTime = (decimalHour) => {
+          const h = Math.floor(decimalHour);
+          const m = Math.round((decimalHour - h) * 60);
+          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        };
+        const parseTime = (timeStr) => {
+          const [h, m] = timeStr.split(':').map(Number);
+          return h + (m || 0) / 60;
+        };
+        const endTime = editBlockModal.start + editBlockModal.duration;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setEditBlockModal(null)}>
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-zinc-900 p-4 flex justify-between items-center">
+                <h3 className="text-sm font-bold uppercase text-white flex items-center gap-2"><Edit3 size={14} /> Redigera block</h3>
+                <button onClick={() => setEditBlockModal(null)} className="text-zinc-400 hover:text-white"><X size={16} /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* Name */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Namn</label>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={editBlockModal.label}
+                    onChange={(e) => setEditBlockModal({ ...editBlockModal, label: e.target.value })}
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="Blocknamn"
+                  />
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Kategori</label>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(categories).map(([id, cat]) => (
+                      <button
+                        key={id}
+                        onClick={() => setEditBlockModal({ ...editBlockModal, type: id })}
+                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                          editBlockModal.type === id
+                            ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-black`
+                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Time row */}
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">
+                      <Clock size={10} className="inline mr-1" />Start
+                    </label>
+                    <input
+                      type="time"
+                      value={formatTime(editBlockModal.start)}
+                      onChange={(e) => {
+                        const newStart = parseTime(e.target.value);
+                        if (newStart >= 7 && newStart < 24) {
+                          setEditBlockModal({ ...editBlockModal, start: newStart });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">
+                      <Clock size={10} className="inline mr-1" />Slut
+                    </label>
+                    <input
+                      type="time"
+                      value={formatTime(endTime)}
+                      onChange={(e) => {
+                        const newEnd = parseTime(e.target.value);
+                        const newDuration = newEnd - editBlockModal.start;
+                        if (newDuration >= 0.5 && newEnd <= 24) {
+                          setEditBlockModal({ ...editBlockModal, duration: Math.round(newDuration * 2) / 2 });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="w-20">
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Längd</label>
+                    <div className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-600 font-mono text-center">
+                      {editBlockModal.duration}h
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Status</label>
+                  <div className="flex gap-2">
+                    {[
+                      { val: 'planned', label: 'Planerad', style: 'bg-blue-100 text-blue-700' },
+                      { val: 'done', label: 'Klar', style: 'bg-green-100 text-green-700' },
+                      { val: 'inactive', label: 'Inaktiv', style: 'bg-zinc-100 text-zinc-500' },
+                    ].map((s) => (
+                      <button
+                        key={s.val}
+                        onClick={() => setEditBlockModal({ ...editBlockModal, status: s.val })}
+                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                          editBlockModal.status === s.val ? `${s.style} ring-2 ring-offset-1 ring-black` : 'bg-zinc-50 text-zinc-400 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Project & Task */}
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Projekt</label>
+                    <input
+                      type="text"
+                      value={editBlockModal.projectName}
+                      onChange={(e) => setEditBlockModal({ ...editBlockModal, projectName: e.target.value })}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Projektnamn"
+                      list="project-history-list"
+                    />
+                    <datalist id="project-history-list">
+                      {projectHistory.map((p) => <option key={p} value={p} />)}
+                    </datalist>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Uppgift</label>
+                    <input
+                      type="text"
+                      value={editBlockModal.taskName}
+                      onChange={(e) => setEditBlockModal({ ...editBlockModal, taskName: e.target.value })}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Uppgiftsnamn"
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Beskrivning / anteckningar</label>
+                  <textarea
+                    value={editBlockModal.description}
+                    onChange={(e) => setEditBlockModal({ ...editBlockModal, description: e.target.value })}
+                    className="w-full h-20 px-3 py-2 border border-zinc-200 rounded-md text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="Vad ska göras? Anteckningar..."
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
+                <button
+                  onClick={() => setEditBlockModal(null)}
+                  className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900"
+                >
+                  Avbryt
+                </button>
+                <button
+                  onClick={() => {
+                    const updatedCalendar = calendar.map((b) => {
+                      if (b.id !== editBlockModal.blockId) return b;
+                      return {
+                        ...b,
+                        label: editBlockModal.label || b.label,
+                        type: editBlockModal.type,
+                        status: editBlockModal.status,
+                        start: editBlockModal.start,
+                        duration: editBlockModal.duration,
+                        description: editBlockModal.description,
+                        projectName: editBlockModal.projectName || null,
+                        taskName: editBlockModal.taskName || null,
+                      };
+                    });
+                    const block = updatedCalendar.find(b => b.id === editBlockModal.blockId);
+                    updateCurrentWeek(resolveCollisions(updatedCalendar, block), points);
+                    // Update project history
+                    if (editBlockModal.projectName && !projectHistory.includes(editBlockModal.projectName)) {
+                      const newHistory = [...projectHistory, editBlockModal.projectName];
+                      setProjectHistory(newHistory);
+                      localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(newHistory));
+                    }
+                    setEditBlockModal(null);
+                  }}
+                  className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+                >
+                  Spara
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Log Sidebar - Modernized */}
       <div

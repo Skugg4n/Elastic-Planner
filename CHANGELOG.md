@@ -5,6 +5,44 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-02-27
+
+### Added
+
+#### Feature 1: Edit Block Modal (Full Block Editor)
+- **Complete block editor**: Clicking the pen icon (✏️) on a selected block now opens a full modal with all editable properties
+- **Editable fields**:
+  - **Namn**: Block label/name
+  - **Kategori**: Category selector with colored buttons for all available categories
+  - **Starttid & Sluttid**: Time pickers (HH:MM) for precise time control
+  - **Längd**: Auto-calculated duration display
+  - **Status**: Toggle between Planerad, Klar, and Inaktiv
+  - **Projekt**: Project name with autocomplete from project history
+  - **Uppgift**: Task name
+  - **Beskrivning**: Free-text description/notes field
+- **Collision resolution**: After saving, blocks are automatically repositioned if time changes cause overlaps
+- **Project history**: New project names are automatically saved for future autocomplete
+
+#### Feature 2: Auto-Split on Overlap (Automatic Parallel Blocks)
+- **Smart overlap detection**: When dragging a block onto another block's time slot, they automatically become parallel (50/50 split) instead of being pushed forward
+- **Resize auto-split**: When resizing a block so it overlaps with another, both blocks become parallel automatically
+- **Natural unlinking**: When dragging away from a parallel position, the block is unlinked from its partner (partner returns to full width)
+- **Cascading collisions**: If more than 2 blocks overlap, the first pair becomes parallel and remaining blocks are resolved via collision resolution
+- **New helper function**: `autoParallelize()` handles the smart detection and pairing logic
+
+### Technical
+- **Version bumped**: 1.13.0 → 1.14.0
+- **New import**: `Clock` from lucide-react (used in time picker labels)
+- **New state**: `editBlockModal` - stores all editable properties of the block being edited
+- **New function**: `autoParallelize(allBlocks, movedBlock)` - checks for overlaps and creates parallel pairs instead of pushing blocks
+- **Modified**: `handleDrop()` - now uses `autoParallelize()` instead of `resolveCollisions()` for insert operations, and properly unlinks old parallel partners when dragging
+- **Modified**: Resize `handleMouseUp` - now uses `autoParallelize()` instead of `resolveCollisions()`
+- **Modified**: Block action handler - 'edit' action now opens full modal instead of inline label editing
+
+### Why These Changes?
+- **Edit Modal**: Previously, users could only edit block names via inline editing and notes via a separate modal. The new modal provides a unified interface for ALL block properties, reducing the number of clicks needed to fully configure a block.
+- **Auto-Split**: The previous behavior pushed blocks forward on overlap, which was often frustrating. Auto-parallelizing matches user intent much better - if you place a block on top of another, you likely want them to coexist in the same time slot, not be sequential.
+
 ## [1.13.0] - 2026-02-27
 
 ### Added
