@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.9.2';
+const APP_VERSION = '1.10.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1120,7 +1120,9 @@ export default function ElasticPlanner() {
   const [reportSidebarOpen, setReportSidebarOpen] = useState(false);
 
   const fileInputRef = useRef(null);
-  const todayIndex = (new Date().getDay() + 6) % 7;
+  const realTodayIndex = (new Date().getDay() + 6) % 7;
+  const isCurrentWeek = currentWeekIndex === getCurrentWeek();
+  const todayIndex = isCurrentWeek ? realTodayIndex : -1; // -1 means no today indicator
   const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {} };
   const { calendar, points } = currentData;
 
@@ -1161,10 +1163,15 @@ export default function ElasticPlanner() {
         setEditingLogId(null);
         setEditingLogTime(null);
       }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockIds.length > 0) {
+        const ids = new Set(selectedBlockIds);
+        updateCurrentWeek(calendar.filter(b => !ids.has(b.id)), points);
+        setSelectedBlockIds([]);
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [selectedBlockIds, calendar, points]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -1877,27 +1884,21 @@ Lätt armhävningspåminnelse
             >
               📊 Rapport
             </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="text-xs font-bold text-zinc-600 hover:text-zinc-900 p-1.5 hover:bg-zinc-100 rounded-lg transition-colors"
+              aria-label="Inställningar"
+            >
+              <Settings size={16} />
+            </button>
             <div className="h-6 w-px bg-zinc-200" />
             <div className="flex gap-1">
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 px-2 py-1 hover:bg-zinc-100 rounded"
-              >
-                <Save size={14} /> Spara
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 px-2 py-1 hover:bg-zinc-100 rounded"
-              >
-                <Upload size={14} /> Ladda
-              </button>
               <button
                 onClick={() => setImportModalOpen(true)}
                 className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-900 px-2 py-1 hover:bg-blue-50 rounded"
               >
                 📥 Import
               </button>
-              <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
             </div>
           </div>
           <div className="flex gap-6 items-center">
@@ -3054,7 +3055,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
           )}
         </div>
 
-        {!isDone && !isEditing && (
+        {!isEditing && (
           <div
             className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center hover:bg-black/10 transition-colors opacity-0 group-hover/block:opacity-100"
             onMouseDown={(e) => onResizeStart(e, block)}

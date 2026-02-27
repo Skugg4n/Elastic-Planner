@@ -5,6 +5,37 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-02-27
+
+### Fixed
+- **Resize handles now appear on all block statuses** - Blocks with status 'done' and 'inactive' can now be resized (previously only 'planned' blocks were resizable). The resize handle (bottom edge drag area) now appears for all statuses.
+- **Fixed "today" indicator for week navigation** - The blue "today" indicator (blue dot + line) now only appears when viewing the current week, not when navigating to other weeks. Calculation fixed to check if `currentWeekIndex === getCurrentWeek()`.
+
+### Added
+- **Delete blocks with keyboard shortcuts** - Selected blocks can now be deleted by pressing Delete or Backspace key. When multiple blocks are selected, pressing Delete removes all of them.
+- **Settings gear button in header** - Added Settings icon (⚙️) to the header for quick access to the settings modal. Clicking it opens the category and preset management dialog.
+- **Improved settings modal** - Settings modal now clearly shows two sections:
+  - "Kategorier" (Categories) - Full CRUD for categories with label editing, color picker, icon picker, target hours, and delete functionality
+  - "Snabbval" (Presets) - Preset editing section for quick-add buttons
+
+### Removed
+- **Removed "Spara" (Export) and "Ladda" (Import) buttons from header** - These backup buttons have been removed since data is auto-saved to localStorage. The "Import" button for training plans remains. The export/import functions are still available in code for future use but don't clutter the header.
+
+### Technical
+- **Version bumped**: 1.9.2 → 1.10.0
+- **Updated resize logic**: Block component now shows resize handle for all statuses, not just non-done blocks
+- **Updated todayIndex calculation**: Now checks `isCurrentWeek` before showing today indicator
+- **Added keyboard event handler**: Delete/Backspace now trigger bulk delete when blocks are selected
+- **Simplified header**: Removed export/import button UI, kept training plan import button
+- **Added Settings button**: New header button toggles settings modal
+
+### Why These Changes?
+- **Resizing done blocks**: Users sometimes need to adjust completed time blocks retroactively
+- **Keyboard delete**: Faster workflow for removing unwanted blocks
+- **Settings button**: More discoverable access to customization options
+- **Today indicator fix**: Prevents confusion when navigating between weeks
+- **Removed buttons**: Cleaner header, less clutter, data is already auto-saved
+
 ## [1.9.2] - 2026-02-27
 
 ### Fixed - CRITICAL
