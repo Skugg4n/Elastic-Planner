@@ -5,6 +5,111 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-02-27
+
+### 🎉 THREE MAJOR FEATURES ADDED
+
+#### Feature 1: Dynamic/Customizable Categories (Fas 2)
+- **Categories now fully customizable** instead of hardcoded
+  - Create, edit, and delete categories from settings modal
+  - Unique ID generation for custom categories: `custom-${Date.now()}`
+  - Categories persist to localStorage with `CATEGORIES_KEY`
+  - Default categories (Bok, Jobb, Fys, Livet) still available as baseline
+
+- **Color customization**
+  - 8-color palette available: zinc, blue, red, emerald, amber, purple, pink variants
+  - One-click color switching in settings
+  - Color includes full Tailwind styling (bg, text, border, icon colors, done-state styles)
+
+- **Icon management**
+  - Available icons: Briefcase, PenTool, Zap, Coffee, Star, Heart, Music, Book, Code, Dumbbell, Bike, Palette
+  - Default icons: PenTool (Bok), Briefcase (Jobb), Zap (Fys), Coffee (Livet)
+  - New categories default to Star icon
+
+- **All references updated**
+  - Replaced global `CATEGORIES` const with dynamic `categories` state
+  - Updated `getCategoryIcon()` to accept and use dynamic categories
+  - All UI components now receive `categories` as prop
+  - Header stats, points, logs, all respect custom categories
+
+- **Safety features**
+  - Cannot delete categories in use (shows block count)
+  - Deleting unused categories requires confirmation
+  - Settings modal scrollable for many categories
+
+#### Feature 2: Job Meter / Flex Tracking (Fas 3)
+- **Target hours per category**
+  - Each category can now have optional `targetHoursPerWeek` setting
+  - Job defaults to 24h/week
+  - Other categories default to null (no tracking)
+  - Editable in settings modal with "Måltimmar/vecka" input
+
+- **Dynamic StatPills**
+  - Header now dynamically generates StatPill for each category
+  - Shows: done / total hours
+  - Displays flex difference when target is set: "+2h" (green) or "−3h" (red)
+  - Only visible if category has blocks OR has a target set
+  - Color-coded: green for on-target/exceeded, red for below target
+
+- **Flexible tracking**
+  - Works with any number of custom categories
+  - Targets are per-category, not global
+  - Visual warning when below target (AlertCircle icon)
+
+#### Feature 3: Duplicate Block (Fas 4)
+- **New "Duplicera" button** in action menu (Copy icon)
+  - Appears when block is selected
+  - Creates exact copy of block with:
+    - New unique ID: `block-${Date.now()}`
+    - Same day, duration, label, type, projectName, taskName
+    - Placed immediately after original (start = original.end)
+    - Status set to 'planned' (fresh copy)
+  - Auto-resolves collisions to maintain clean schedule
+  - Undo via deletion if needed
+
+- **Workflow benefit**
+  - Quick copy-paste for repetitive schedules
+  - Reduces manual data entry
+  - Maintains proper collision detection
+
+### Technical Changes
+- **Version bumped**: 1.8.2 → 1.9.0
+- **New imports**: Added `Copy` icon from lucide-react
+- **New localStorage keys**:
+  - `CATEGORIES_KEY = 'elastic-planner-categories'`
+  - `FLEX_KEY = 'elastic-planner-flex'` (reserved for future flex calculations)
+- **New constants**:
+  - `COLOR_PALETTE`: 8 color options with full styling
+  - `ICON_OPTIONS`: 12 available icons
+  - `DEFAULT_CATEGORIES`: Original 4 categories with new fields
+- **New category fields**:
+  - `icon: string` - icon name from available options
+  - `targetHoursPerWeek: number | null` - weekly goal
+- **Updated getCategoryIcon()**: Now accepts `categories` parameter for dynamic lookup
+- **Block component**: Accepts `categories` prop, uses for styling
+- **Settings modal**: Expanded to include category management section above presets
+- **StatPill component**: Enhanced to show flex difference when target is set
+- **Header stats**: Dynamically generate from all categories instead of hardcoded
+
+### Data Migrations
+- **Automatic migration**: Existing users get DEFAULT_CATEGORIES on first load
+- **Backwards compatible**: Old data structures still work, enhanced with new fields
+- **No data loss**: All existing blocks, logs, and schedules preserved
+
+### Breaking Changes
+⚠️ **None** - Fully backwards compatible
+
+### Why These Features?
+- **Dynamic Categories**: App was too rigid with 4 fixed categories. Users want flexibility for different life domains
+- **Flex Tracking**: Need visual indicator of whether weekly targets are being met, especially for job hours
+- **Duplicate Block**: Repetitive schedules (same meetings weekly, same training) need quick copy-paste mechanism
+
+### Impact
+- Significantly more customizable and flexible
+- Better support for multiple projects/life domains
+- Clearer weekly progress tracking
+- Faster schedule creation for recurring patterns
+
 ## [1.8.2] - 2026-02-27
 
 ### Fixed

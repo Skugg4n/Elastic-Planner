@@ -1,15 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, FileText, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Copy, Edit3, FileText, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.8.2';
+const APP_VERSION = '1.9.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
 const LOCAL_STORAGE_KEY = 'elastic-planner-weeks';
 const CURRENT_WEEK_KEY = 'elastic-planner-current-week';
 const PROJECT_HISTORY_KEY = 'elastic-planner-project-history';
+const CATEGORIES_KEY = 'elastic-planner-categories';
+const FLEX_KEY = 'elastic-planner-flex';
 
-const CATEGORIES = {
+const COLOR_PALETTE = [
+  { id: 'zinc-900', bg: 'bg-zinc-900', text: 'text-white', border: 'border-zinc-900', iconColor: 'text-zinc-900', borderColor: 'border-zinc-900', doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75' },
+  { id: 'blue-600', bg: 'bg-blue-600', text: 'text-white', border: 'border-blue-700', iconColor: 'text-blue-600', borderColor: 'border-blue-300', doneStyle: 'bg-blue-50 text-blue-600 border-blue-200 line-through opacity-75' },
+  { id: 'red-600', bg: 'bg-red-600', text: 'text-white', border: 'border-red-700', iconColor: 'text-red-600', borderColor: 'border-red-300', doneStyle: 'bg-red-50 text-red-600 border-red-200 line-through opacity-75' },
+  { id: 'emerald-500', bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600', iconColor: 'text-emerald-600', borderColor: 'border-emerald-300', doneStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-75' },
+  { id: 'amber-500', bg: 'bg-amber-500', text: 'text-white', border: 'border-amber-600', iconColor: 'text-amber-600', borderColor: 'border-amber-300', doneStyle: 'bg-amber-50 text-amber-600 border-amber-200 line-through opacity-75' },
+  { id: 'purple-600', bg: 'bg-purple-600', text: 'text-white', border: 'border-purple-700', iconColor: 'text-purple-600', borderColor: 'border-purple-300', doneStyle: 'bg-purple-50 text-purple-600 border-purple-200 line-through opacity-75' },
+  { id: 'pink-500', bg: 'bg-pink-500', text: 'text-white', border: 'border-pink-600', iconColor: 'text-pink-600', borderColor: 'border-pink-300', doneStyle: 'bg-pink-50 text-pink-600 border-pink-200 line-through opacity-75' },
+  { id: 'zinc-200', bg: 'bg-zinc-200', text: 'text-zinc-900', border: 'border-zinc-300', iconColor: 'text-zinc-600', borderColor: 'border-zinc-300', doneStyle: 'bg-zinc-50 text-zinc-500 border-zinc-200 line-through opacity-75' },
+];
+
+const ICON_OPTIONS = ['Briefcase', 'PenTool', 'Zap', 'Coffee', 'Star', 'Heart', 'Music', 'Book', 'Code', 'Dumbbell', 'Bike', 'Palette'];
+
+const DEFAULT_CATEGORIES = {
   creative: {
     id: 'creative',
     label: 'Bok',
@@ -19,6 +34,8 @@ const CATEGORIES = {
     doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75',
     iconColor: 'text-zinc-900',
     borderColor: 'border-zinc-900',
+    icon: 'PenTool',
+    targetHoursPerWeek: null,
   },
   job: {
     id: 'job',
@@ -29,6 +46,8 @@ const CATEGORIES = {
     doneStyle: 'bg-zinc-50 text-zinc-500 border-zinc-200 line-through opacity-75',
     iconColor: 'text-blue-600',
     borderColor: 'border-blue-300',
+    icon: 'Briefcase',
+    targetHoursPerWeek: 24,
   },
   training: {
     id: 'training',
@@ -39,6 +58,8 @@ const CATEGORIES = {
     doneStyle: 'bg-red-50 text-red-600 border-red-200 line-through opacity-75',
     iconColor: 'text-red-600',
     borderColor: 'border-red-300',
+    icon: 'Zap',
+    targetHoursPerWeek: null,
   },
   life: {
     id: 'life',
@@ -49,22 +70,27 @@ const CATEGORIES = {
     doneStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-75',
     iconColor: 'text-emerald-600',
     borderColor: 'border-emerald-300',
+    icon: 'Coffee',
+    targetHoursPerWeek: null,
   },
 };
 
-const getCategoryIcon = (categoryId, size = 14) => {
-  switch (categoryId) {
-    case 'job':
-      return <Briefcase size={size} />;
-    case 'creative':
-      return <PenTool size={size} />;
-    case 'training':
-      return <Zap size={size} fill="currentColor" />;
-    case 'life':
-      return <Coffee size={size} />;
-    default:
-      return <Star size={size} />;
+const getCategoryIcon = (categoryId, size = 14, categories = DEFAULT_CATEGORIES) => {
+  const category = categories[categoryId];
+  if (!category) {
+    return <Star size={size} />;
   }
+
+  const iconName = category.icon || 'Star';
+  const iconMap = {
+    'Briefcase': <Briefcase size={size} />,
+    'PenTool': <PenTool size={size} />,
+    'Zap': <Zap size={size} fill="currentColor" />,
+    'Coffee': <Coffee size={size} />,
+    'Star': <Star size={size} />,
+  };
+
+  return iconMap[iconName] || <Star size={size} />;
 };
 
 // Parse and render markdown checkboxes
@@ -453,8 +479,12 @@ const getInitialWeekIndex = () => {
 
 const getInitialProjectHistory = () => {
   if (typeof window === 'undefined') {
+    const projects = {};
+    Object.keys(DEFAULT_CATEGORIES).forEach(id => {
+      projects[id] = {};
+    });
     return {
-      projects: { creative: {}, job: {}, training: {}, life: {} },
+      projects,
       recentCombinations: [],
     };
   }
@@ -468,8 +498,12 @@ const getInitialProjectHistory = () => {
     }
   }
 
+  const projects = {};
+  Object.keys(DEFAULT_CATEGORIES).forEach(id => {
+    projects[id] = {};
+  });
   return {
-    projects: { creative: {}, job: {}, training: {}, life: {} },
+    projects,
     recentCombinations: [],
   };
 };
@@ -1034,6 +1068,13 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
 export default function ElasticPlanner() {
   const [currentWeekIndex, setCurrentWeekIndex] = useState(getInitialWeekIndex);
   const [weeksData, setWeeksData] = useState(getInitialWeeksData);
+  const [categories, setCategories] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CATEGORIES_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_CATEGORIES;
+  });
 
   const [draggedBlock, setDraggedBlock] = useState(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState([]);
@@ -1083,6 +1124,10 @@ export default function ElasticPlanner() {
   useEffect(() => {
     localStorage.setItem(CURRENT_WEEK_KEY, String(currentWeekIndex));
   }, [currentWeekIndex]);
+
+  useEffect(() => {
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  }, [categories]);
 
   useEffect(() => {
     document.title = `Elastic Planner v${APP_VERSION}`;
@@ -1386,7 +1431,7 @@ export default function ElasticPlanner() {
       start: hour,
       duration,
       type,
-      label: CATEGORIES[type].label,
+      label: categories[type].label,
       status: 'planned',
       description: '',
       projectName: projectName || null,
@@ -1839,8 +1884,12 @@ Lätt armhävningspåminnelse
             </div>
           </div>
           <div className="flex gap-6 items-center">
-            <StatPill label="Bok" current={doneBok} total={totalBok} unit="h" />
-            <StatPill label="Jobb" current={doneJob} total={totalJob} unit="h" target={24} warnBelowTarget />
+            {Object.values(categories).map(cat => {
+              const done = calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0);
+              const total = calendar.filter(b => b.type === cat.id).reduce((a, b) => a + b.duration, 0);
+              if (total === 0 && !cat.targetHoursPerWeek) return null;
+              return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={cat.targetHoursPerWeek} warnBelowTarget={!!cat.targetHoursPerWeek} />;
+            })}
             {totalWeekPoints > 0 && (
               <div className="flex flex-col items-end">
                 <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
@@ -1849,10 +1898,11 @@ Lätt armhävningspåminnelse
                 <div className="flex items-baseline gap-1">
                   <span className="text-lg font-black tracking-tighter text-yellow-600">{totalWeekPoints}</span>
                   <div className="flex gap-1 text-[9px]">
-                    {pointsByCategory.training > 0 && <span className="text-red-600">⚡{pointsByCategory.training}</span>}
-                    {pointsByCategory.job > 0 && <span className="text-blue-600">💼{pointsByCategory.job}</span>}
-                    {pointsByCategory.creative > 0 && <span className="text-zinc-900">✏️{pointsByCategory.creative}</span>}
-                    {pointsByCategory.life > 0 && <span className="text-emerald-600">☕{pointsByCategory.life}</span>}
+                    {Object.values(categories).map(cat => {
+                      const count = weekPoints.filter(p => p.categoryId === cat.id).length;
+                      if (count === 0) return null;
+                      return <span key={cat.id} className={`${cat.iconColor}`}>⚡{count}</span>;
+                    })}
                   </div>
                 </div>
               </div>
@@ -2058,6 +2108,7 @@ Lätt armhävningspåminnelse
                           onClick={(e) => handleBlockClick(e, block.id)}
                           onDragStart={(e) => handleDragStart(e, block, 'calendar')}
                           onResizeStart={handleResizeStart}
+                          categories={categories}
                           onUpdateLabel={(lbl) => {
                             const u = (l) => l.map((b) => (b.id === block.id ? { ...b, label: lbl } : b));
                             updateCurrentWeek(u(calendar), points);
@@ -2066,6 +2117,10 @@ Lätt armhävningspåminnelse
                           onAction={(action) => {
                             if (action === 'toggle') toggleStatus(block.id);
                             if (action === 'split') splitBlock(block);
+                            if (action === 'duplicate') {
+                              const newBlock = { ...block, id: `block-${Date.now()}`, start: block.start + block.duration, status: 'planned' };
+                              updateCurrentWeek(resolveCollisions([...calendar, newBlock], newBlock), points);
+                            }
                             if (action === 'edit') setEditingLabelId(block.id);
                             if (action === 'delete') deleteBlock(block.id);
                             if (action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
@@ -2075,7 +2130,7 @@ Lätt armhävningspåminnelse
                       ))}
 
                     {groupedPoints.map((group) => {
-                      const category = CATEGORIES[group.categoryId] || CATEGORIES.life;
+                      const category = categories[group.categoryId] || categories.life || Object.values(categories)[0];
                       const isPlanned = group.status === 'planned';
                       return (
                         <div
@@ -2089,7 +2144,7 @@ Lätt armhävningspåminnelse
                           }}
                         >
                           <div className={`bg-white rounded-full p-0.5 shadow-md border relative ${category.borderColor} ${isPlanned ? 'border-dashed' : ''}`}>
-                            <div className={category.iconColor}>{getCategoryIcon(group.categoryId, 14)}</div>
+                            <div className={category.iconColor}>{getCategoryIcon(group.categoryId, 14, categories)}</div>
                             {group.count > 1 && (
                               <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">
                                 {group.count}
@@ -2365,7 +2420,7 @@ Lätt armhävningspåminnelse
                         </div>
                         {isEditing && (
                           <div className="flex gap-1.5 mt-3 pt-3 border-t border-zinc-100">
-                            {Object.values(CATEGORIES).map((cat) => (
+                            {Object.values(categories).map((cat) => (
                               <button
                                 key={cat.id}
                                 onClick={() => updatePointCategory(selectedLogDay, log.id, cat.id)}
@@ -2374,7 +2429,7 @@ Lätt armhävningspåminnelse
                                 }`}
                                 title={cat.label}
                               >
-                                {getCategoryIcon(cat.id, 13)}
+                                {getCategoryIcon(cat.id, 13, categories)}
                               </button>
                             ))}
                           </div>
@@ -2393,7 +2448,7 @@ Lätt armhävningspåminnelse
             <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-wide">Snabbval</h4>
             <div className="flex flex-wrap gap-2 mb-4">
               {presets.map((preset, i) => {
-                const presetCategory = CATEGORIES[preset.category] || CATEGORIES.life;
+                const presetCategory = categories[preset.category] || categories.life || Object.values(categories)[0];
                 return (
                   <button
                     key={i}
@@ -2408,7 +2463,7 @@ Lätt armhävningspåminnelse
             </div>
 
             <div className="flex gap-2 mb-3">
-              {Object.values(CATEGORIES).map((cat) => (
+              {Object.values(categories).map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedLogCategory(cat.id)}
@@ -2417,7 +2472,7 @@ Lätt armhävningspåminnelse
                   }`}
                   title={cat.label}
                 >
-                  {getCategoryIcon(cat.id, 15)}
+                  {getCategoryIcon(cat.id, 15, categories)}
                 </button>
               ))}
             </div>
@@ -2457,9 +2512,9 @@ Lätt armhävningspåminnelse
       {logEntryModal && (
         <div className="log-entry-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogEntryModal(null)}>
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`p-4 border-b flex justify-between items-center ${CATEGORIES[logEntryModal.categoryId]?.bg || 'bg-zinc-100'} ${CATEGORIES[logEntryModal.categoryId]?.text || 'text-zinc-900'}`}>
+            <div className={`p-4 border-b flex justify-between items-center ${categories[logEntryModal.categoryId]?.bg || 'bg-zinc-100'} ${categories[logEntryModal.categoryId]?.text || 'text-zinc-900'}`}>
               <div className="flex items-center gap-2">
-                {getCategoryIcon(logEntryModal.categoryId, 18)}
+                {getCategoryIcon(logEntryModal.categoryId, 18, categories)}
                 <h3 className="text-lg font-bold uppercase tracking-tight">Logga aktivitet</h3>
               </div>
               <button onClick={() => setLogEntryModal(null)} className="hover:opacity-70">
@@ -2482,7 +2537,7 @@ Lätt armhävningspåminnelse
                 autoFocus
                 name="logEntryInput"
                 type="text"
-                placeholder={`Vad gjorde du i ${CATEGORIES[logEntryModal.categoryId]?.label || 'denna kategori'}?`}
+                placeholder={`Vad gjorde du i ${categories[logEntryModal.categoryId]?.label || 'denna kategori'}?`}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mb-3"
               />
               <div className="flex justify-end gap-2">
@@ -2530,14 +2585,114 @@ Lätt armhävningspåminnelse
 
       {settingsOpen && (
         <div className="settings-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setSettingsOpen(false)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center sticky top-0 z-10">
               <h3 className="text-lg font-bold text-zinc-700">Inställningar</h3>
               <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-zinc-900">
                 <X size={20} />
               </button>
             </div>
             <div className="p-4">
+              {/* Categories Section */}
+              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Kategorier</h4>
+              <ul className="space-y-3 mb-4">
+                {Object.values(categories).map((cat) => {
+                  const blocksInUse = calendar.filter(b => b.type === cat.id).length;
+                  return (
+                    <li key={cat.id} className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
+                      <div className="flex gap-2 items-end mb-2">
+                        <input
+                          type="text"
+                          value={cat.label}
+                          onChange={(e) => {
+                            setCategories(prev => ({
+                              ...prev,
+                              [cat.id]: { ...prev[cat.id], label: e.target.value }
+                            }));
+                          }}
+                          className="flex-grow bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
+                          placeholder="Kategorinaam"
+                        />
+                        {blocksInUse === 0 && (
+                          <button
+                            onClick={() => {
+                              const newCats = { ...categories };
+                              delete newCats[cat.id];
+                              setCategories(newCats);
+                            }}
+                            className="text-zinc-400 hover:text-red-500"
+                            title="Radera kategori"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex gap-2 items-center mb-2">
+                        <span className="text-xs font-bold text-zinc-600">Färg:</span>
+                        <div className="flex gap-1 flex-wrap">
+                          {COLOR_PALETTE.map(color => (
+                            <button
+                              key={color.id}
+                              onClick={() => {
+                                setCategories(prev => ({
+                                  ...prev,
+                                  [cat.id]: { ...prev[cat.id], ...color }
+                                }));
+                              }}
+                              className={`w-5 h-5 rounded-full ${color.bg} border-2 ${cat.id === color.id && cat.bg === color.bg ? 'border-black' : 'border-transparent'}`}
+                              title={color.id}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs font-bold text-zinc-600">Måltimmar/v:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={cat.targetHoursPerWeek ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseInt(e.target.value) : null;
+                            setCategories(prev => ({
+                              ...prev,
+                              [cat.id]: { ...prev[cat.id], targetHoursPerWeek: val }
+                            }));
+                          }}
+                          className="w-16 bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
+                          placeholder="Opt."
+                        />
+                      </div>
+                      {blocksInUse > 0 && (
+                        <div className="text-[11px] text-zinc-500 mt-2">
+                          {blocksInUse} block(ar) använder denna kategori
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <button
+                onClick={() => {
+                  const newId = `custom-${Date.now()}`;
+                  setCategories(prev => ({
+                    ...prev,
+                    [newId]: {
+                      id: newId,
+                      label: 'Ny',
+                      icon: 'Star',
+                      targetHoursPerWeek: null,
+                      ...COLOR_PALETTE[0]
+                    }
+                  }));
+                }}
+                className="w-full py-2 border border-dashed border-zinc-300 text-zinc-400 rounded text-sm hover:text-zinc-600 hover:border-zinc-400 mb-4"
+              >
+                + Lägg till kategori
+              </button>
+
+              <hr className="my-4" />
+
+              {/* Presets Section */}
               <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Redigera Snabbval</h4>
               <ul className="space-y-2 mb-4">
                 {presets.map((preset, i) => (
@@ -2574,7 +2729,7 @@ Lätt armhävningspåminnelse
         onClose={() => setReportSidebarOpen(false)}
         weeksData={weeksData}
         currentWeekIndex={currentWeekIndex}
-        categories={CATEGORIES}
+        categories={categories}
       />
 
       {/* Floating Action Button - Add Point */}
@@ -2663,7 +2818,7 @@ Lätt armhävningspåminnelse
               <div>
                 <label className="block text-sm font-bold text-zinc-700 mb-2">Kategori</label>
                 <div className="flex gap-2">
-                  {Object.values(CATEGORIES).map((cat) => (
+                  {Object.values(categories).map((cat) => (
                     <button
                       key={cat.id}
                       onClick={() => setPointCategory(cat.id)}
@@ -2673,7 +2828,7 @@ Lätt armhävningspåminnelse
                           : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
                       }`}
                     >
-                      {getCategoryIcon(cat.id, 20)}
+                      {getCategoryIcon(cat.id, 20, categories)}
                     </button>
                   ))}
                 </div>
@@ -2706,6 +2861,7 @@ Lätt armhävningspåminnelse
 function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
   const isDone = current >= total;
   const showWarning = warnBelowTarget && total < target;
+  const diff = target ? current - target : null;
 
   return (
     <div className="flex flex-col items-end">
@@ -2720,12 +2876,17 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
           {showWarning && <span className="text-[8px] text-red-500 ml-1 font-bold">(Mål {target})</span>}
         </span>
       </div>
+      {diff !== null && (
+        <span className={`text-[9px] font-bold mt-0.5 ${diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          {diff >= 0 ? '+' : ''}{diff}{unit}
+        </span>
+      )}
     </div>
   );
 }
 
-function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel }) {
-  const cat = CATEGORIES[block.type];
+function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel, categories = DEFAULT_CATEGORIES }) {
+  const cat = categories[block.type];
   const isDone = block.status === 'done';
   const isInactive = block.status === 'inactive';
 
@@ -2893,6 +3054,16 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
             className="p-1 hover:bg-white/20 rounded"
           >
             <Scissors size={12} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction('duplicate');
+            }}
+            className="p-1 hover:bg-white/20 rounded"
+            title="Duplicera block"
+          >
+            <Copy size={12} />
           </button>
           <button
             onClick={(e) => {
