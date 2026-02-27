@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Briefcase, Check, ChevronLeft, ChevronRight, Coffee, Edit3, FileText, MessageSquare, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -975,7 +975,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
               <div className="text-[10px] text-zinc-400 uppercase mt-1">Timmar</div>
             </div>
             <div className="bg-zinc-900 p-3 rounded-lg text-center">
-              <div className="text-2xl font-black text-white">{reportData.totalLogs}</div>
+              <div className="text-2xl font-black text-white">{reportData.totalPoints}</div>
               <div className="text-[10px] text-zinc-400 uppercase mt-1">Aktiviteter</div>
             </div>
             <div className="bg-zinc-900 p-3 rounded-lg text-center">
@@ -994,14 +994,14 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
                   <div className="font-bold text-zinc-900 mb-2">{proj.name}</div>
                   <div className="flex gap-4 text-xs text-zinc-600 mb-3">
                     <span className="font-bold">{proj.hours}h</span>
-                    <span>{proj.logCount} aktiviteter</span>
+                    <span>{proj.pointCount} aktiviteter</span>
                   </div>
                   {proj.tasks.length > 0 && (
                     <div className="space-y-2 pt-3 border-t border-zinc-100">
                       {proj.tasks.map((task) => (
                         <div key={task.name} className="flex justify-between items-center text-xs">
                           <span className="font-medium text-zinc-700">{task.name}</span>
-                          <span className="text-zinc-500">{task.hours}h · {task.logCount}</span>
+                          <span className="text-zinc-500">{task.hours}h · {task.pointCount}</span>
                         </div>
                       ))}
                     </div>
@@ -1695,6 +1695,18 @@ Lätt armhävningspåminnelse
     e.preventDefault();
     if (!draggedBlock || !dropIndicator || dropIndicator.type === 'resize') return;
 
+    // Check if block is being dropped back to the same position
+    const samePosition = dropIndicator.type === 'insert'
+      && dropIndicator.day === draggedBlock.day
+      && dropIndicator.hour === draggedBlock.start;
+
+    if (samePosition) {
+      // Cancel drag – leave everything as-is
+      setDraggedBlock(null);
+      setDropIndicator(null);
+      return;
+    }
+
     let newCalendar = calendar.filter((b) => b.id !== draggedBlock.id);
 
     if (dropIndicator.type === 'merge') {
@@ -2385,7 +2397,7 @@ Lätt armhävningspåminnelse
                 return (
                   <button
                     key={i}
-                    onClick={() => addToLog(selectedLogDay, preset.label, null, preset.category)}
+                    onClick={() => addPoint(selectedLogDay, preset.label, null, preset.category)}
                     className="bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1.5 items-center"
                   >
                     <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
@@ -2415,7 +2427,7 @@ Lätt armhävningspåminnelse
                 e.preventDefault();
                 const val = e.target.elements.logInput.value;
                 if (val) {
-                  addToLog(selectedLogDay, val, null, selectedLogCategory);
+                  addPoint(selectedLogDay, val, null, selectedLogCategory);
                   e.target.reset();
                 }
               }}
@@ -2461,7 +2473,7 @@ Lätt armhävningspåminnelse
                 e.preventDefault();
                 const val = e.target.elements.logEntryInput.value;
                 if (val) {
-                  addToLog(logEntryModal.dayIndex, val, logEntryModal.blockStart, logEntryModal.categoryId);
+                  addPoint(logEntryModal.dayIndex, val, logEntryModal.blockStart, logEntryModal.categoryId);
                   setLogEntryModal(null);
                 }
               }}

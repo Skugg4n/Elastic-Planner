@@ -5,6 +5,18 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-02-27
+
+### Fixed
+- **Drag & drop**: Blocks can now be dropped back to their original position without being shifted forward by collision resolution
+- **Report sidebar crash**: Fixed references to `totalLogs`/`logCount` (renamed in v1.8.0 to `totalPoints`/`pointCount`) that caused the report view to break
+- **Preset buttons broken**: Fixed `addToLog()` calls (function removed in v1.8.0) → now correctly calls `addPoint()`
+- **Log sidebar input broken**: Same `addToLog` → `addPoint` fix applied to the manual activity input form
+
+### Technical
+- **Why**: These bugs were introduced in the v1.8.0 refactor when logs were renamed to points, but several UI references were not updated
+- **Impact**: Report sidebar now works, preset quick-buttons work, and drag & drop is less frustrating
+
 ## [1.8.1] - 2026-01-09
 
 ### Added - HOTFIX
