@@ -5,6 +5,60 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-02-27
+
+### Added
+
+#### Feature 1: Default Template for New Weeks
+- **Default Template System**: Added ability to save any day's layout as a template that automatically applies to all days in newly created weeks
+- **"Ställ in som veckomall" button**: In the template dropdown for each day, users can now click "Ställ in som veckomall" to save the current day's blocks and points as the default template
+- **Auto-apply on new week navigation**: When navigating to a week that doesn't exist yet, if a default template is set, it will automatically be applied to all 7 days with new block/point IDs
+- **Settings panel management**: Added default template section in Settings modal showing:
+  - Current default template name and creation date
+  - "Radera standardmall" button to clear the default template
+  - Helper text when no template is set
+- **localStorage key**: `elastic-planner-default-template` stores template data including name, blocks, points, and setAt timestamp
+
+#### Feature 2: Bank Panel (Unscheduled Items Sidebar)
+- **Bank System**: New side panel at the bottom of the screen for storing unscheduled blocks to use later
+- **Bank UI**:
+  - Collapsible panel with "📦 Bank (N)" button showing item count
+  - When expanded, displays all stored items with label, category color dot, and duration
+  - Items can be dragged from bank directly into calendar cells
+  - Items can be deleted from bank with trash icon
+- **Add to Bank**: New "📦" button in block action menu to move blocks to bank (removes from calendar)
+- **Dragging from Bank**: When dragging a bank item to a calendar cell, creates a new block with the bank item's properties and auto-resolves collisions
+- **Quick Add to Bank**: Form in expanded bank panel to add items directly:
+  - Label input field
+  - Duration dropdown (0.5, 1, 1.5, 2, 3, 4h)
+  - Category selector with colored dots
+  - "Lägg till" button
+- **Bank Item Structure**: Stores label, type (category), duration, projectName, taskName, and addedAt timestamp
+- **localStorage key**: `elastic-planner-bank` persists all bank items
+- **Floating action button**: Moved add point button up to accommodate expanded bank panel at bottom
+
+### Technical
+- **Version bumped**: 1.10.0 → 1.11.0
+- **New constants**: `DEFAULT_TEMPLATE_KEY`, `BANK_KEY`
+- **New state**: `bankItems`, `bankOpen`, `bankAddLabel`, `bankAddDuration`, `bankAddCategory`
+- **New functions**:
+  - `saveAsDefaultTemplate(dayIndex)` - Save day layout as default template
+  - `getDefaultTemplate()` - Retrieve default template from localStorage
+  - `clearDefaultTemplate()` - Delete default template
+  - `addToBank(blockId)` - Move block to bank
+  - `removeFromBank(bankItemId)` - Delete bank item
+  - `addBankItemToCalendar(bankItemId, dayIndex, startHour)` - Create block from bank item
+  - `addQuickBankItem()` - Add quick item via form
+- **Modified**: `handleDrop()` - Added logic to handle drops from bank items
+- **New useEffect**: Auto-applies default template when navigating to week that doesn't exist yet
+- **New useEffect**: Persists bank items to localStorage whenever they change
+
+### Why These Changes?
+- **Default Template**: Users with repetitive weekly schedules can now instantly set up new weeks without manual entry
+- **Bank System**: Enables flexible task management - users can plan activities and schedule them flexibly throughout the week, or keep them as "to be scheduled later"
+- **Drag from Bank**: Natural interaction model matching the existing drag-drop calendar system
+- **Swedish UI**: Both features use Swedish labels for consistency with existing app
+
 ## [1.10.0] - 2026-02-27
 
 ### Fixed

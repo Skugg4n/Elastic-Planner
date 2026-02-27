@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -10,6 +10,8 @@ const CURRENT_WEEK_KEY = 'elastic-planner-current-week';
 const PROJECT_HISTORY_KEY = 'elastic-planner-project-history';
 const CATEGORIES_KEY = 'elastic-planner-categories';
 const FLEX_KEY = 'elastic-planner-flex';
+const DEFAULT_TEMPLATE_KEY = 'elastic-planner-default-template';
+const BANK_KEY = 'elastic-planner-bank';
 
 const COLOR_PALETTE = [
   { id: 'zinc-900', bg: 'bg-zinc-900', text: 'text-white', border: 'border-zinc-900', iconColor: 'text-zinc-900', borderColor: 'border-zinc-900', doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75' },
@@ -1118,6 +1120,18 @@ export default function ElasticPlanner() {
 
   const [projectHistory, setProjectHistory] = useState(getInitialProjectHistory);
   const [reportSidebarOpen, setReportSidebarOpen] = useState(false);
+  const [bankItems, setBankItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem(BANK_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankAddLabel, setBankAddLabel] = useState('');
+  const [bankAddDuration, setBankAddDuration] = useState(1);
+  const [bankAddCategory, setBankAddCategory] = useState('life');
 
   const fileInputRef = useRef(null);
   const realTodayIndex = (new Date().getDay() + 6) % 7;
@@ -1137,6 +1151,47 @@ export default function ElasticPlanner() {
   useEffect(() => {
     localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
   }, [categories]);
+
+  useEffect(() => {
+    localStorage.setItem(BANK_KEY, JSON.stringify(bankItems));
+  }, [bankItems]);
+
+  // Apply default template to new weeks
+  useEffect(() => {
+    if (!weeksData[currentWeekIndex]) {
+      const defaultTemplate = localStorage.getItem(DEFAULT_TEMPLATE_KEY);
+      if (defaultTemplate) {
+        try {
+          const template = JSON.parse(defaultTemplate);
+          const newWeekData = { calendar: [], points: {} };
+
+          // Apply template to all 7 days
+          for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+            template.blocks.forEach((block) => {
+              newWeekData.calendar.push({
+                ...block,
+                id: `block-${Date.now()}-${Math.random()}`,
+                day: dayIndex,
+              });
+            });
+
+            newWeekData.points[dayIndex] = template.points.map((point) => ({
+              ...point,
+              id: `point-${Date.now()}-${Math.random()}`,
+              day: dayIndex,
+            }));
+          }
+
+          setWeeksData((prev) => ({
+            ...prev,
+            [currentWeekIndex]: newWeekData,
+          }));
+        } catch (e) {
+          console.warn('Kunde inte tillämpa standardmall', e);
+        }
+      }
+    }
+  }, [currentWeekIndex, weeksData]);
 
   useEffect(() => {
     document.title = `Elastic Planner v${APP_VERSION}`;
@@ -1274,6 +1329,36 @@ export default function ElasticPlanner() {
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
   };
 
+  const saveAsDefaultTemplate = (dayIndex) => {
+    const dayBlocks = calendar.filter((b) => b.day === dayIndex);
+    const dayPoints = points[dayIndex] || [];
+
+    const defaultTemplate = {
+      name: `Mall sparad ${new Date().toLocaleDateString('sv-SE')}`,
+      blocks: dayBlocks.map((b) => ({ ...b, day: null })),
+      points: dayPoints.map((p) => ({ ...p, day: null })),
+      setAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(DEFAULT_TEMPLATE_KEY, JSON.stringify(defaultTemplate));
+    setTemplateDropdownDay(null);
+  };
+
+  const getDefaultTemplate = () => {
+    try {
+      const stored = localStorage.getItem(DEFAULT_TEMPLATE_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const clearDefaultTemplate = () => {
+    if (confirm('Radera standardmallen?')) {
+      localStorage.removeItem(DEFAULT_TEMPLATE_KEY);
+    }
+  };
+
   const resolveCollisions = (allBlocks, changedBlock) => {
     let blocks = [...allBlocks];
     let hasChanges = true;
@@ -1299,6 +1384,70 @@ export default function ElasticPlanner() {
       }
     }
     return blocks;
+  };
+
+  // Bank functions
+  const addToBank = (blockId) => {
+    const block = calendar.find(b => b.id === blockId);
+    if (!block) return;
+
+    const bankItem = {
+      id: `bank-${Date.now()}`,
+      label: block.label,
+      type: block.type,
+      duration: block.duration,
+      projectName: block.projectName || null,
+      taskName: block.taskName || null,
+      addedAt: new Date().toISOString(),
+    };
+
+    setBankItems([...bankItems, bankItem]);
+    updateCurrentWeek(calendar.filter(b => b.id !== blockId), points);
+  };
+
+  const removeFromBank = (bankItemId) => {
+    setBankItems(bankItems.filter(item => item.id !== bankItemId));
+  };
+
+  const addBankItemToCalendar = (bankItemId, dayIndex, startHour) => {
+    const bankItem = bankItems.find(item => item.id === bankItemId);
+    if (!bankItem) return;
+
+    const newBlock = {
+      id: `block-${Date.now()}-${Math.random()}`,
+      day: dayIndex,
+      start: startHour,
+      duration: bankItem.duration,
+      type: bankItem.type,
+      label: bankItem.label,
+      status: 'planned',
+      description: '',
+      projectName: bankItem.projectName,
+      taskName: bankItem.taskName,
+    };
+
+    const newCalendar = resolveCollisions([...calendar, newBlock], newBlock);
+    updateCurrentWeek(newCalendar, points);
+    removeFromBank(bankItemId);
+  };
+
+  const addQuickBankItem = () => {
+    if (!bankAddLabel.trim()) return;
+
+    const bankItem = {
+      id: `bank-${Date.now()}`,
+      label: bankAddLabel,
+      type: bankAddCategory,
+      duration: bankAddDuration,
+      projectName: null,
+      taskName: null,
+      addedAt: new Date().toISOString(),
+    };
+
+    setBankItems([...bankItems, bankItem]);
+    setBankAddLabel('');
+    setBankAddDuration(1);
+    setBankAddCategory('life');
   };
 
   const addPoint = (day, text, specificTime = null, categoryId = 'life', status = 'done', projectName = null, taskName = null) => {
@@ -1753,6 +1902,14 @@ Lätt armhävningspåminnelse
     e.preventDefault();
     if (!draggedBlock || !dropIndicator || dropIndicator.type === 'resize') return;
 
+    // Handle bank item drop
+    if (draggedBlock.isFromBank) {
+      addBankItemToCalendar(draggedBlock.id, dropIndicator.day, dropIndicator.hour);
+      setDraggedBlock(null);
+      setDropIndicator(null);
+      return;
+    }
+
     // Check if block is being dropped back to the same position
     const samePosition = dropIndicator.type === 'insert'
       && dropIndicator.day === draggedBlock.day
@@ -2016,6 +2173,15 @@ Lätt armhävningspåminnelse
                                 >
                                   + Spara som mall
                                 </button>
+                                <button
+                                  onClick={() => {
+                                    saveAsDefaultTemplate(dIndex);
+                                  }}
+                                  className="text-left px-2 py-1.5 hover:bg-amber-50 rounded text-xs font-bold text-amber-700"
+                                  title="Kommer att tillämpas på alla nya veckor"
+                                >
+                                  🗂️ Ställ in som veckomall
+                                </button>
                                 <div className="border-t border-zinc-100 my-1" />
                                 {Object.keys(listTemplates()).length === 0 ? (
                                   <div className="text-xs text-zinc-400 italic px-2 py-1">Inga mallar</div>
@@ -2141,6 +2307,7 @@ Lätt armhävningspåminnelse
                               const newBlock = { ...block, id: `block-${Date.now()}`, start: block.start + block.duration, status: 'planned' };
                               updateCurrentWeek(resolveCollisions([...calendar, newBlock], newBlock), points);
                             }
+                            if (action === 'tobank') addToBank(block.id);
                             if (action === 'edit') setEditingLabelId(block.id);
                             if (action === 'delete') deleteBlock(block.id);
                             if (action === 'note') setNoteModal({ blockId: block.id, text: block.description || '' });
@@ -2760,6 +2927,34 @@ Lätt armhävningspåminnelse
               >
                 + Lägg till snabbval
               </button>
+
+              <hr className="my-4" />
+
+              {/* Default Template Section */}
+              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Standardmall för nya veckor</h4>
+              {(() => {
+                const defaultTemplate = getDefaultTemplate();
+                return (
+                  <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 mb-4">
+                    {defaultTemplate ? (
+                      <div>
+                        <p className="text-sm font-bold text-amber-900 mb-2">{defaultTemplate.name}</p>
+                        <p className="text-xs text-amber-700 mb-3">
+                          Sparad: {new Date(defaultTemplate.setAt).toLocaleDateString('sv-SE')}
+                        </p>
+                        <button
+                          onClick={clearDefaultTemplate}
+                          className="w-full py-2 px-3 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded transition-colors"
+                        >
+                          Radera standardmall
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-amber-700">Ingen standardmall inställd. Spara en dagsmall och välj "Ställ in som veckomall".</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -2774,10 +2969,123 @@ Lätt armhävningspåminnelse
         categories={categories}
       />
 
+      {/* Bank Panel */}
+      <div className="fixed bottom-0 left-0 right-0 z-50">
+        {bankOpen ? (
+          <div className="bg-white border-t border-zinc-300 shadow-2xl max-h-[50vh] overflow-y-auto">
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-zinc-900">📦 Bank</h3>
+                <button
+                  onClick={() => setBankOpen(false)}
+                  className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {bankItems.length > 0 ? (
+                <div className="grid grid-cols-1 gap-2 mb-4">
+                  {bankItems.map((item) => {
+                    const cat = categories[item.type] || categories.life || Object.values(categories)[0];
+                    return (
+                      <div
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          setDraggedBlock({ ...item, isFromBank: true });
+                        }}
+                        onDragEnd={() => setDraggedBlock(null)}
+                        className="flex items-center gap-2 p-2 bg-zinc-50 border border-zinc-200 rounded hover:bg-zinc-100 cursor-move transition-colors"
+                      >
+                        <div className={`w-3 h-3 rounded-full ${cat.bg}`} />
+                        <div className="flex-grow min-w-0">
+                          <p className="text-sm font-bold text-zinc-800 truncate">{item.label}</p>
+                          {item.projectName && (
+                            <p className="text-xs text-zinc-500">{item.projectName} {item.taskName ? `/ ${item.taskName}` : ''}</p>
+                          )}
+                        </div>
+                        <span className="text-xs font-bold text-zinc-600">{item.duration}h</span>
+                        <button
+                          onClick={() => removeFromBank(item.id)}
+                          className="p-1 text-zinc-400 hover:text-red-500"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-500 text-center py-4 mb-4">Ingen objekt i banken</p>
+              )}
+
+              <div className="border-t border-zinc-200 pt-4 mt-4">
+                <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Lägg till till bank</h4>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Aktivitetsetikett"
+                    value={bankAddLabel}
+                    onChange={(e) => setBankAddLabel(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-zinc-300 rounded text-sm focus:outline-none focus:border-blue-500"
+                    onKeyPress={(e) => e.key === 'Enter' && addQuickBankItem()}
+                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={bankAddDuration}
+                      onChange={(e) => setBankAddDuration(parseFloat(e.target.value))}
+                      className="flex-grow px-2 py-1.5 border border-zinc-300 rounded text-sm focus:outline-none focus:border-blue-500"
+                    >
+                      <option value={0.5}>0.5h</option>
+                      <option value={1}>1h</option>
+                      <option value={1.5}>1.5h</option>
+                      <option value={2}>2h</option>
+                      <option value={3}>3h</option>
+                      <option value={4}>4h</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-1">
+                    {Object.values(categories).map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setBankAddCategory(cat.id)}
+                        className={`flex-grow px-2 py-1.5 rounded text-xs font-bold transition-all ${
+                          bankAddCategory === cat.id
+                            ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-black`
+                            : `${cat.bg} ${cat.text} opacity-50 hover:opacity-75`
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={addQuickBankItem}
+                    className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-sm transition-colors"
+                  >
+                    Lägg till
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setBankOpen(true)}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 font-bold rounded-t-lg shadow-2xl flex items-center justify-center gap-2 transition-colors"
+            title="Öppna Bank"
+          >
+            <span>📦 Bank ({bankItems.length})</span>
+          </button>
+        )}
+      </div>
+
       {/* Floating Action Button - Add Point */}
       <button
         onClick={() => setAddPointModalOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] transition-all hover:scale-110 active:scale-95"
+        className="fixed bottom-20 right-6 w-14 h-14 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] transition-all hover:scale-110 active:scale-95"
         title="Lägg till punkt"
       >
         <Zap size={24} fill="currentColor" />
@@ -3111,6 +3419,16 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
             title="Duplicera block"
           >
             <Copy size={12} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction('tobank');
+            }}
+            className="p-1 hover:bg-white/20 rounded text-blue-400"
+            title="Till Bank"
+          >
+            <span className="text-xs">📦</span>
           </button>
           <button
             onClick={(e) => {
