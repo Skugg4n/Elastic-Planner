@@ -5,6 +5,17 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-02-27
+
+### Fixed - CRITICAL
+- **White screen crash**: Fixed 3 remaining references to old `CATEGORIES` constant that should have been `categories` (state). Caused the app to crash when clicking empty calendar cells, opening log sidebar, or using FAB presets.
+- **Drag start crash**: Removed `setSourceContainer(source)` call - function was never declared (leftover from removed Bank feature). Caused crash on any drag operation.
+- **Cleaned up dead code**: Removed unused `doneBok`/`totalBok`/`doneJob`/`totalJob` variables (stats are now dynamic)
+
+### Added
+- **Cumulative comp flex**: For categories with a target (e.g., Jobb 24h/v), the header now shows BOTH weekly diff ("v: +2h") AND total cumulative flex across all weeks ("totalt: +12h (8v)")
+- This lets you see how much comp time you've banked overall, not just this week
+
 ## [1.9.1] - 2026-02-27
 
 ### Fixed (Code Review Findings)

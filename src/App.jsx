@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '1.9.2';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1718,9 +1718,8 @@ Lätt armhävningspåminnelse
     setSelectedBlockIds([]);
   };
 
-  const handleDragStart = (e, block, source) => {
+  const handleDragStart = (e, block) => {
     setDraggedBlock(block);
-    setSourceContainer(source);
     setSelectedBlockIds([]);
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -1805,19 +1804,6 @@ Lätt armhävningspåminnelse
     reader.readAsText(file);
   };
 
-  const doneBok = calendar
-    .filter((b) => b.type === 'creative' && b.status === 'done')
-    .reduce((acc, b) => acc + b.duration, 0);
-  const totalBok = calendar
-    .filter((b) => b.type === 'creative')
-    .reduce((acc, b) => acc + b.duration, 0);
-  const doneJob = calendar
-    .filter((b) => b.type === 'job' && b.status === 'done')
-    .reduce((acc, b) => acc + b.duration, 0);
-  const totalJob = calendar
-    .filter((b) => b.type === 'job')
-    .reduce((acc, b) => acc + b.duration, 0);
-
   // Count points per category for the week
   const weekPoints = Object.values(points).flat();
   const pointsByCategory = Object.keys(categories).reduce((acc, catId) => {
@@ -1825,6 +1811,32 @@ Lätt armhävningspåminnelse
     return acc;
   }, {});
   const totalWeekPoints = weekPoints.length;
+
+  // Cumulative flex: sum done hours vs target across ALL weeks for categories with targets
+  const cumulativeFlex = {};
+  Object.values(categories).forEach(cat => {
+    if (!cat.targetHoursPerWeek) return;
+    let totalDone = 0;
+    let weekCount = 0;
+    Object.values(weeksData).forEach(weekData => {
+      if (!weekData.calendar) return;
+      const weekDone = weekData.calendar
+        .filter(b => b.type === cat.id && b.status === 'done')
+        .reduce((a, b) => a + b.duration, 0);
+      // Only count weeks that have any blocks for this category (to avoid counting empty weeks)
+      if (weekDone > 0 || weekData.calendar.some(b => b.type === cat.id)) {
+        totalDone += weekDone;
+        weekCount++;
+      }
+    });
+    const totalTarget = weekCount * cat.targetHoursPerWeek;
+    cumulativeFlex[cat.id] = {
+      totalDone: Math.round(totalDone * 10) / 10,
+      totalTarget: Math.round(totalTarget * 10) / 10,
+      diff: Math.round((totalDone - totalTarget) * 10) / 10,
+      weekCount,
+    };
+  });
 
   return (
     <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
@@ -1890,10 +1902,10 @@ Lätt armhävningspåminnelse
           </div>
           <div className="flex gap-6 items-center">
             {Object.values(categories).map(cat => {
-              const done = calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0);
-              const total = calendar.filter(b => b.type === cat.id).reduce((a, b) => a + b.duration, 0);
+              const done = Math.round(calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0) * 10) / 10;
+              const total = Math.round(calendar.filter(b => b.type === cat.id).reduce((a, b) => a + b.duration, 0) * 10) / 10;
               if (total === 0 && !cat.targetHoursPerWeek) return null;
-              return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={cat.targetHoursPerWeek} warnBelowTarget={!!cat.targetHoursPerWeek} />;
+              return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={cat.targetHoursPerWeek} warnBelowTarget={!!cat.targetHoursPerWeek} cumFlex={cumulativeFlex[cat.id]} />;
             })}
             {totalWeekPoints > 0 && (
               <div className="flex flex-col items-end">
@@ -2113,7 +2125,7 @@ Lätt armhävningspåminnelse
                           isSelected={selectedBlockIds.includes(block.id)}
                           isEditing={editingLabelId === block.id}
                           onClick={(e) => handleBlockClick(e, block.id)}
-                          onDragStart={(e) => handleDragStart(e, block, 'calendar')}
+                          onDragStart={(e) => handleDragStart(e, block)}
                           onResizeStart={handleResizeStart}
                           categories={categories}
                           onUpdateLabel={(lbl) => {
@@ -2207,7 +2219,7 @@ Lätt armhävningspåminnelse
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex gap-1">
-                {Object.values(CATEGORIES).map((cat) => (
+                {Object.values(categories).map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
@@ -2346,7 +2358,7 @@ Lätt armhävningspåminnelse
                 {(points[selectedLogDay] || [])
                   .sort((a, b) => a.timestamp - b.timestamp)
                   .map((log) => {
-                    const logCategory = CATEGORIES[log.categoryId] || CATEGORIES.life;
+                    const logCategory = categories[log.categoryId] || categories.life || Object.values(categories)[0];
                     const isEditing = editingLogId === log.id;
                     const isEditingTime = editingLogTime === log.id;
                     const hours = Math.floor(log.timestamp);
@@ -2786,7 +2798,7 @@ Lätt armhävningspåminnelse
               <h3 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h3>
               <div className="grid grid-cols-2 gap-2">
                 {presets.map((preset, i) => {
-                  const presetCat = CATEGORIES[preset.category] || CATEGORIES.life;
+                  const presetCat = categories[preset.category] || categories.life || Object.values(categories)[0];
                   return (
                     <button
                       key={i}
@@ -2887,10 +2899,10 @@ Lätt armhävningspåminnelse
   );
 }
 
-function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
+function StatPill({ label, current, total, unit, target, warnBelowTarget, cumFlex }) {
   const isDone = current >= total;
   const showWarning = warnBelowTarget && total < target;
-  const diff = target ? current - target : null;
+  const weekDiff = target ? Math.round((current - target) * 10) / 10 : null;
 
   return (
     <div className="flex flex-col items-end">
@@ -2902,12 +2914,17 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget }) {
         <span className="text-lg font-black tracking-tighter">{current}</span>
         <span className="text-[10px] font-medium text-zinc-400">
           / {total} {unit}
-          {showWarning && <span className="text-[8px] text-red-500 ml-1 font-bold">(Mål {target})</span>}
+          {target && <span className="text-[8px] text-zinc-400 ml-1">(mål {target})</span>}
         </span>
       </div>
-      {diff !== null && (
-        <span className={`text-[9px] font-bold mt-0.5 ${diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {diff >= 0 ? '+' : ''}{diff}{unit}
+      {weekDiff !== null && (
+        <span className={`text-[9px] font-bold ${weekDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          v: {weekDiff >= 0 ? '+' : ''}{weekDiff}{unit}
+        </span>
+      )}
+      {cumFlex && cumFlex.weekCount > 1 && (
+        <span className={`text-[9px] font-bold ${cumFlex.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          totalt: {cumFlex.diff >= 0 ? '+' : ''}{cumFlex.diff}{unit} ({cumFlex.weekCount}v)
         </span>
       )}
     </div>
