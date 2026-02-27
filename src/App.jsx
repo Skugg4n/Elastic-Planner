@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -38,6 +38,7 @@ const DEFAULT_CATEGORIES = {
     borderColor: 'border-zinc-900',
     icon: 'PenTool',
     targetHoursPerWeek: null,
+    weeklyGoalPoints: null,
   },
   job: {
     id: 'job',
@@ -50,6 +51,7 @@ const DEFAULT_CATEGORIES = {
     borderColor: 'border-blue-300',
     icon: 'Briefcase',
     targetHoursPerWeek: 24,
+    weeklyGoalPoints: null,
   },
   training: {
     id: 'training',
@@ -62,6 +64,7 @@ const DEFAULT_CATEGORIES = {
     borderColor: 'border-red-300',
     icon: 'Zap',
     targetHoursPerWeek: null,
+    weeklyGoalPoints: 10,
   },
   life: {
     id: 'life',
@@ -74,6 +77,7 @@ const DEFAULT_CATEGORIES = {
     borderColor: 'border-emerald-300',
     icon: 'Coffee',
     targetHoursPerWeek: null,
+    weeklyGoalPoints: null,
   },
 };
 
@@ -1124,6 +1128,7 @@ export default function ElasticPlanner() {
   const [pointText, setPointText] = useState('');
   const [pointTime, setPointTime] = useState('');
   const [pointCategory, setPointCategory] = useState('life');
+  const [quickTrainingCount, setQuickTrainingCount] = useState(0);
   const [currentTime, setCurrentTime] = useState(() => {
     const now = new Date();
     return now.getHours() + now.getMinutes() / 60;
@@ -1698,6 +1703,7 @@ export default function ElasticPlanner() {
     setPointText('');
     setPointTime('');
     setPointCategory('life');
+    setQuickTrainingCount(0);
     setAddPointModalOpen(false);
   };
 
@@ -2057,6 +2063,24 @@ Lätt armhävningspåminnelse
     };
   });
 
+  // Calculate training goal progress for categories with weeklyGoalPoints
+  const trainingGoals = {};
+  Object.values(categories).forEach(cat => {
+    if (!cat.weeklyGoalPoints) return;
+    const trainingPoints = weekPoints.filter(p => p.categoryId === cat.id).length;
+    const trainingBlockHours = calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0);
+    const currentGoalPoints = trainingPoints + Math.round(trainingBlockHours * 2);
+    const weeklyGoal = cat.weeklyGoalPoints;
+    const isGoalMet = currentGoalPoints >= weeklyGoal;
+    trainingGoals[cat.id] = {
+      currentPoints: currentGoalPoints,
+      goalPoints: weeklyGoal,
+      trainingPoints,
+      trainingBlockHours,
+      isGoalMet
+    };
+  });
+
   return (
     <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
       <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-50">
@@ -2131,12 +2155,33 @@ Lätt armhävningspåminnelse
                     {Object.values(categories).map(cat => {
                       const count = weekPoints.filter(p => p.categoryId === cat.id).length;
                       if (count === 0) return null;
-                      return <span key={cat.id} className={`${cat.iconColor}`}>⚡{count}</span>;
+                      const isTraining = cat.id === 'training';
+                      return <span key={cat.id} className={`${isTraining ? 'font-bold text-red-600' : cat.iconColor}`}>⚡{count}</span>;
                     })}
                   </div>
                 </div>
               </div>
             )}
+            {Object.entries(trainingGoals).map(([catId, goal]) => {
+              const cat = categories[catId];
+              if (!cat) return null;
+              const progress = Math.min(100, (goal.currentPoints / goal.goalPoints) * 100);
+              return (
+                <div key={catId} className="flex flex-col items-end">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold uppercase text-red-400">Fys-mål</span>
+                    {goal.isGoalMet && <span className="text-lg">🏆</span>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-lg font-black text-red-600">{goal.currentPoints}</span>
+                    <span className="text-[10px] text-zinc-400">/ {goal.goalPoints}p</span>
+                  </div>
+                  <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-0.5">
+                    <div className="h-full bg-red-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </header>
@@ -2174,6 +2219,8 @@ Lätt armhävningspåminnelse
 
               const pointCount = dayPoints.length;
               const isSuperDay = pointCount >= 4;
+              const trainingPointCount = dayPoints.filter(p => p.categoryId === 'training').length;
+              const hasTrainingFire = trainingPointCount >= 3;
 
               const dayCategoryStats = Object.entries(categories).map(([catId, cat]) => {
                 const blocks = dayBlocks.filter((b) => b.type === catId);
@@ -2202,6 +2249,9 @@ Lätt armhävningspåminnelse
                           <span className="bg-yellow-500 text-white text-[8px] font-bold px-1 rounded-sm flex items-center">
                             ⭐ PEPP!
                           </span>
+                        )}
+                        {hasTrainingFire && (
+                          <span className="text-lg">🔥</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
@@ -2950,7 +3000,7 @@ Lätt armhävningspåminnelse
                           ))}
                         </div>
                       </div>
-                      <div className="flex gap-2 items-center">
+                      <div className="flex gap-2 items-center mb-2">
                         <span className="text-xs font-bold text-zinc-600">Måltimmar/v:</span>
                         <input
                           type="number"
@@ -2961,6 +3011,23 @@ Lätt armhävningspåminnelse
                             setCategories(prev => ({
                               ...prev,
                               [cat.id]: { ...prev[cat.id], targetHoursPerWeek: val }
+                            }));
+                          }}
+                          className="w-16 bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
+                          placeholder="Opt."
+                        />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs font-bold text-zinc-600">Målantalpoäng/v:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={cat.weeklyGoalPoints ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseInt(e.target.value) : null;
+                            setCategories(prev => ({
+                              ...prev,
+                              [cat.id]: { ...prev[cat.id], weeklyGoalPoints: val }
                             }));
                           }}
                           className="w-16 bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
@@ -2986,6 +3053,7 @@ Lätt armhävningspåminnelse
                       label: 'Ny',
                       icon: 'Star',
                       targetHoursPerWeek: null,
+                      weeklyGoalPoints: null,
                       ...COLOR_PALETTE[0]
                     }
                   }));
@@ -3189,14 +3257,45 @@ Lätt armhävningspåminnelse
 
       {/* Add Point Modal */}
       {addPointModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200]" onClick={() => setAddPointModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200]" onClick={() => {
+          setAddPointModalOpen(false);
+          setQuickTrainingCount(0);
+        }}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-zinc-900">Lägg till punkt</h2>
-              <button onClick={() => setAddPointModalOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+              <button onClick={() => {
+                setAddPointModalOpen(false);
+                setQuickTrainingCount(0);
+              }} className="text-zinc-400 hover:text-zinc-600">
                 <X size={24} />
               </button>
             </div>
+
+            {/* Quick Training Section */}
+            {presets.filter(p => p.category === 'training').length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-xs font-bold uppercase text-red-500 mb-2">🔥 Snabbträning</h3>
+                <p className="text-[10px] text-zinc-500 mb-2">
+                  {quickTrainingCount > 0 && <span className="font-bold text-red-600">{quickTrainingCount} aktiviteter registrerade denna session</span>}
+                  {quickTrainingCount === 0 && <span>En-klick registrering</span>}
+                </p>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {presets.filter(p => p.category === 'training').map((preset, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        addPoint(todayIndex, preset.label, currentTime, preset.category, 'done');
+                        setQuickTrainingCount(quickTrainingCount + 1);
+                      }}
+                      className="px-3 py-2 rounded-lg text-sm font-bold transition-all bg-red-600 text-white hover:bg-red-700 active:scale-95"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Presets */}
             <div className="mb-4">
@@ -3284,7 +3383,10 @@ Lätt armhävningspåminnelse
             {/* Actions */}
             <div className="flex gap-3 mt-6">
               <button
-                onClick={() => setAddPointModalOpen(false)}
+                onClick={() => {
+                  setAddPointModalOpen(false);
+                  setQuickTrainingCount(0);
+                }}
                 className="flex-1 px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-bold rounded-lg transition-colors"
               >
                 Avbryt

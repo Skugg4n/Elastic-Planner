@@ -5,6 +5,65 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-02-27
+
+### Added
+
+#### Feature: Unified Training System with Weekly Goals
+- **Weekly Training Goal System**: Added `weeklyGoalPoints` field to categories (training defaults to 10 points/week)
+- **Composite Goal Scoring**:
+  - Each training point (⚡) = 1 goal point
+  - Each training block hour = 2 goal points (e.g., 1.5h session = 3 goal points)
+  - Combined progress tracking for both micro-workouts and longer sessions
+- **Training Goal Dashboard in Header**: New "Fys-mål" pill next to StatPills showing:
+  - Current points / goal points (e.g., "7 / 10p")
+  - Progress bar visualizing completion percentage
+  - Trophy emoji (🏆) when weekly goal is met
+- **Day Achievement Badges**:
+  - Fire emoji (🔥) badge appears on days with 3+ training points
+  - Shows alongside existing PEPP! badge for completing activities
+- **Quick-Log Snabbträning Section**:
+  - New dedicated "🔥 Snabbträning" section at top of add-point modal
+  - One-tap buttons for training presets (filter by category='training')
+  - Instant registration without modal closure (stay open for multiple quick logs)
+  - Live counter: "3 aktiviteter registrerade denna session"
+  - Auto-set time to now, category to training, status to done
+- **Enhanced Points Display**:
+  - Training points shown in bold red (⚡ in red) in header "Punkter" breakdown
+  - Clear visual distinction from other categories
+
+### Technical
+- **Version bumped**: 1.12.0 → 1.13.0
+- **New category field**: `weeklyGoalPoints: number | null` added to all categories
+  - DEFAULT_CATEGORIES training entry now has `weeklyGoalPoints: 10`
+  - Other default categories have `weeklyGoalPoints: null`
+  - Custom categories created in settings also include this field
+- **New state**: `quickTrainingCount` for tracking quick-log session counter
+- **New calculations**: `trainingGoals` object computed from points and blocks
+  - Per-category tracking of current points vs weekly goal
+  - Boolean flag for goal achievement status
+- **Settings modal enhancement**: New "Målantalpoäng/v" input field (next to "Måltimmar/v")
+- **Header enhancements**:
+  - Training goal pills rendered after existing StatPills
+  - Fire badge logic on day headers (3+ training points)
+  - Training points styled in bold red in points breakdown
+- **Modal enhancements**:
+  - Quick-training buttons trigger `addPoint()` directly (no form needed)
+  - Quick-training section only shows if training presets exist
+  - Modal reset functionality clears quick-training counter on close
+
+### Why These Changes?
+- **Unified System**: Training was split between blocks (hours) and points (reps). Now they work together toward one goal
+- **Flexibility**: Some days might have a long session (3+ hours = 6+ points), other days micro-workouts (3 quick reps = 3 points). Both count equally toward weekly goal
+- **Motivation**: Visual progress bar and achievement badges provide feedback on weekly training consistency
+- **Speed**: One-tap quick-logging for training removes friction from registering frequent small workouts
+- **Clarity**: Fire badge instantly signals "you trained hard today" (3+ mini-sessions), trophy signals "weekly goal achieved"
+
+### Data Model
+- Points now support `categoryId` field for better tracking (already existed, now used more)
+- Blocks already tracked by `type` (category), count as hours toward goal
+- Goal calculation is generic: works with any category that has `weeklyGoalPoints` set (not hardcoded to training)
+
 ## [1.12.0] - 2026-02-27
 
 ### Added
