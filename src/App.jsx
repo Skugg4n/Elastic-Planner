@@ -1188,10 +1188,22 @@ export default function ElasticPlanner() {
       const saved = localStorage.getItem(CATEGORIES_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Fix corrupted category IDs (bug in v1.9.0-1.13.0 where COLOR_PALETTE.id overwrote category.id)
+        // Merge saved categories with defaults to ensure hex colors exist
         const fixed = {};
         Object.entries(parsed).forEach(([key, cat]) => {
-          fixed[key] = { ...cat, id: key };
+          const defaults = DEFAULT_CATEGORIES[key] || {};
+          fixed[key] = {
+            ...defaults,  // hex, textHex, borderHex, doneHex, etc from defaults
+            ...cat,       // user customizations override defaults
+            id: key,      // always fix ID to match key
+          };
+          // Ensure hex colors exist (migration from pre-v1.15.0)
+          if (!fixed[key].hex && defaults.hex) fixed[key].hex = defaults.hex;
+          if (!fixed[key].textHex && defaults.textHex) fixed[key].textHex = defaults.textHex;
+          if (!fixed[key].borderHex && defaults.borderHex) fixed[key].borderHex = defaults.borderHex;
+          if (!fixed[key].doneHex && defaults.doneHex) fixed[key].doneHex = defaults.doneHex;
+          if (!fixed[key].doneTextHex && defaults.doneTextHex) fixed[key].doneTextHex = defaults.doneTextHex;
+          if (!fixed[key].doneBorderHex && defaults.doneBorderHex) fixed[key].doneBorderHex = defaults.doneBorderHex;
         });
         return fixed;
       }
