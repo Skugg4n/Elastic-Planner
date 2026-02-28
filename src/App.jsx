@@ -3989,8 +3989,8 @@ Lätt armhävningspåminnelse
                       onClick={() => setPointCategory(cat.id)}
                       className={`flex-1 py-2 rounded-lg font-bold transition-all ${
                         pointCategory === cat.id
-                          ? 'ring-2 ring-offset-2 ring-zinc-400'
-                          : 'opacity-40 hover:opacity-70'
+                          ? 'ring-2 ring-offset-2 ring-zinc-400 scale-105'
+                          : 'opacity-60 hover:opacity-90 hover:scale-105'
                       }`}
                       style={{ backgroundColor: cat.hex, color: cat.textHex }}
                     >
