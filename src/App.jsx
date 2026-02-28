@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.16.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -1249,6 +1249,45 @@ export default function ElasticPlanner() {
   const [bankAddDuration, setBankAddDuration] = useState(1);
   const [bankAddCategory, setBankAddCategory] = useState('life');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [undoToast, setUndoToast] = useState(null);
+
+  // --- Undo/Redo system ---
+  const undoStack = useRef([]);
+  const redoStack = useRef([]);
+  const isUndoRedo = useRef(false);
+  const MAX_UNDO = 30;
+
+  const pushUndo = useCallback((prevWeeksData) => {
+    if (isUndoRedo.current) return;
+    undoStack.current = [...undoStack.current.slice(-(MAX_UNDO - 1)), JSON.parse(JSON.stringify(prevWeeksData))];
+    redoStack.current = [];
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.current.length === 0) return;
+    const prev = undoStack.current.pop();
+    isUndoRedo.current = true;
+    setWeeksData((current) => {
+      redoStack.current.push(JSON.parse(JSON.stringify(current)));
+      return prev;
+    });
+    setUndoToast('↩ Ångrade');
+    setTimeout(() => { isUndoRedo.current = false; }, 50);
+    setTimeout(() => setUndoToast(null), 1500);
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.current.length === 0) return;
+    const next = redoStack.current.pop();
+    isUndoRedo.current = true;
+    setWeeksData((current) => {
+      undoStack.current.push(JSON.parse(JSON.stringify(current)));
+      return next;
+    });
+    setUndoToast('↪ Omgjorde');
+    setTimeout(() => { isUndoRedo.current = false; }, 50);
+    setTimeout(() => setUndoToast(null), 1500);
+  }, []);
 
   const fileInputRef = useRef(null);
   const realTodayIndex = (new Date().getDay() + 6) % 7;
@@ -1262,6 +1301,7 @@ export default function ElasticPlanner() {
     const newExcluded = current.includes(dayIndex)
       ? current.filter(d => d !== dayIndex)
       : [...current, dayIndex];
+    pushUndo(weeksData);
     const newData = { ...weeksData };
     newData[currentWeekIndex] = { ...newData[currentWeekIndex], excludedDays: newExcluded };
     setWeeksData(newData);
@@ -1349,6 +1389,18 @@ export default function ElasticPlanner() {
         setTemplateDropdownDay(null);
         setReportSidebarOpen(false);
       }
+      // Undo: Ctrl+Z (or Cmd+Z on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      // Redo: Ctrl+Shift+Z or Ctrl+Y
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || e.key === 'y')) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockIds.length > 0) {
         const ids = new Set(selectedBlockIds);
         updateCurrentWeek(calendar.filter(b => !ids.has(b.id)), points);
@@ -1357,7 +1409,7 @@ export default function ElasticPlanner() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedBlockIds, calendar, points]);
+  }, [selectedBlockIds, calendar, points, handleUndo, handleRedo]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -1413,13 +1465,16 @@ export default function ElasticPlanner() {
   }, [notificationsEnabled, calendar, isCurrentWeek, categories]);
 
   const updateCurrentWeek = (newCalendar, newPoints) => {
-    setWeeksData((prev) => ({
-      ...prev,
-      [currentWeekIndex]: {
-        calendar: newCalendar,
-        points: newPoints || prev[currentWeekIndex]?.points || {},
-      },
-    }));
+    setWeeksData((prev) => {
+      pushUndo(prev);
+      return {
+        ...prev,
+        [currentWeekIndex]: {
+          calendar: newCalendar,
+          points: newPoints || prev[currentWeekIndex]?.points || {},
+        },
+      };
+    });
   };
 
   // Template management functions
@@ -2028,6 +2083,7 @@ Lätt armhävningspåminnelse
       });
     });
 
+    pushUndo(weeksData);
     setWeeksData(newWeeksData);
     setImportModalOpen(false);
   };
@@ -2175,6 +2231,33 @@ Lätt armhävningspåminnelse
     setDropIndicator(null);
   };
 
+  // --- Full Backup Export (ALL data) ---
+  const handleFullExport = () => {
+    const backup = {
+      version: APP_VERSION,
+      exportedAt: new Date().toISOString(),
+      weeksData,
+      categories,
+      bankItems,
+      presets,
+      projectHistory,
+      templates: (() => { try { return JSON.parse(localStorage.getItem('elastic-planner-templates') || '{}'); } catch { return {}; } })(),
+      defaultTemplate: (() => { try { return JSON.parse(localStorage.getItem(DEFAULT_TEMPLATE_KEY) || 'null'); } catch { return null; } })(),
+    };
+    const dataStr = JSON.stringify(backup, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const date = new Date().toISOString().slice(0, 10);
+    link.download = `elastic-planner-backup_${date}_v${APP_VERSION}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // --- Legacy export (only weeksData, kept for report sidebar) ---
   const handleExport = () => {
     const dataStr = JSON.stringify(weeksData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
@@ -2185,6 +2268,44 @@ Lätt armhävningspåminnelse
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const backupInputRef = useRef(null);
+
+  const handleFullImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+
+        // Detect format: full backup (has .version) vs legacy (just weeksData)
+        if (data.version && data.weeksData) {
+          // Full backup
+          pushUndo(weeksData);
+          setWeeksData(data.weeksData);
+          if (data.categories) setCategories(data.categories);
+          if (data.bankItems) setBankItems(data.bankItems);
+          if (data.presets) setPresets(data.presets);
+          if (data.projectHistory) setProjectHistory(data.projectHistory);
+          if (data.templates) localStorage.setItem('elastic-planner-templates', JSON.stringify(data.templates));
+          if (data.defaultTemplate) localStorage.setItem(DEFAULT_TEMPLATE_KEY, JSON.stringify(data.defaultTemplate));
+          alert(`✅ Backup laddad! (v${data.version}, ${data.exportedAt?.slice(0, 10) || 'okänt datum'})`);
+        } else {
+          // Legacy format — just weeksData
+          pushUndo(weeksData);
+          setWeeksData(data);
+          alert('✅ Planering laddad! (legacy-format, bara veckdata)');
+        }
+      } catch (err) {
+        alert('❌ Kunde inte läsa filen. Kontrollera att det är en giltig JSON-backup.');
+        console.error('Importfel', err);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset so same file can be re-imported
   };
 
   const handleImport = (e) => {
@@ -2194,6 +2315,7 @@ Lätt armhävningspåminnelse
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target.result);
+        pushUndo(weeksData);
         setWeeksData(imported);
         alert('Laddat!');
       } catch (err) {
@@ -2324,7 +2446,24 @@ Lätt armhävningspåminnelse
               <Settings size={16} />
             </button>
             <div className="h-6 w-px bg-zinc-200" />
-            <div className="flex gap-1">
+            <div className="flex gap-1 items-center">
+              <button
+                onClick={handleUndo}
+                className={`p-1.5 rounded transition-colors ${undoStack.current.length > 0 ? 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900' : 'text-zinc-300 cursor-default'}`}
+                title="Ångra (Ctrl+Z)"
+                disabled={undoStack.current.length === 0}
+              >
+                <RotateCcw size={14} />
+              </button>
+              <button
+                onClick={handleRedo}
+                className={`p-1.5 rounded transition-colors ${redoStack.current.length > 0 ? 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900' : 'text-zinc-300 cursor-default'}`}
+                title="Gör om (Ctrl+Shift+Z)"
+                disabled={redoStack.current.length === 0}
+              >
+                <RotateCw size={14} />
+              </button>
+              <div className="w-px h-4 bg-zinc-200 mx-1" />
               <button
                 onClick={() => setImportModalOpen(true)}
                 className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-900 px-2 py-1 hover:bg-blue-50 rounded"
@@ -3547,6 +3686,30 @@ Lätt armhävningspåminnelse
 
               <hr className="my-4" />
 
+              {/* Backup Section */}
+              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Säkerhetskopiering</h4>
+              <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200 mb-4 space-y-3">
+                <p className="text-xs text-zinc-500">Exportera all data (veckor, kategorier, bank, mallar, presets). Importera för att återställa.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleFullExport}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded transition-colors"
+                  >
+                    <Download size={14} /> Exportera backup
+                  </button>
+                  <button
+                    onClick={() => backupInputRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded transition-colors"
+                  >
+                    <Upload size={14} /> Importera backup
+                  </button>
+                  <input ref={backupInputRef} type="file" accept=".json" onChange={handleFullImport} className="hidden" />
+                </div>
+                <p className="text-[10px] text-zinc-400">Senast exporterad: — (spara regelbundet!)</p>
+              </div>
+
+              <hr className="my-4" />
+
               {/* Default Template Section */}
               <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Standardmall för nya veckor</h4>
               {(() => {
@@ -3586,6 +3749,7 @@ Lätt armhävningspåminnelse
         categories={categories}
         onUpdateBlocks={(blocksToUpdate) => {
           // Update blocks across all weeks
+          pushUndo(weeksData);
           const updatedWeeksData = { ...weeksData };
           const idsToUpdate = new Set(blocksToUpdate.map(b => b.id));
           Object.entries(updatedWeeksData).forEach(([weekId, weekData]) => {
@@ -3871,6 +4035,15 @@ Lätt armhävningspåminnelse
                 Lägg till
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Undo/Redo Toast */}
+      {undoToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] animate-pulse">
+          <div className="px-4 py-2 rounded-lg shadow-lg text-sm font-bold text-white" style={{ backgroundColor: '#001219' }}>
+            {undoToast}
           </div>
         </div>
       )}

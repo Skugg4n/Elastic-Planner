@@ -5,6 +5,31 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-02-28
+
+### Added
+
+#### 1. Undo/Redo ↩↪
+- Ctrl+Z (eller Cmd+Z) ångrar senaste ändringen i planeringen
+- Ctrl+Shift+Z (eller Ctrl+Y) gör om en ångrad ändring
+- Undo/redo-knappar synliga i headern med tydlig disabled-state
+- Upp till 30 steg sparas i historiken
+- Toast-meddelande visas vid ångra/gör om
+- Alla data-mutationer fångas: drag, resize, radering, import, excludeDays, rapportändringar
+
+#### 2. Fullständig Backup (Export/Import) 💾
+- Ny sektion "Säkerhetskopiering" i Inställningar
+- Export sparar ALL data: veckor, kategorier, bank, mallar, presets, projekthistorik
+- Import läser både nytt fullständigt format och äldre legacy-format (bara weeksData)
+- Filnamn inkluderar datum: `elastic-planner-backup_2026-02-28_v1.16.0.json`
+- Tydlig bekräftelse vid import med version och datum
+- Reset av filinput så samma fil kan importeras igen
+
+### Fixed
+- URL.revokeObjectURL läggs till efter export för att förhindra minnesläcka
+
+---
+
 ## [1.15.0] - 2026-02-28
 
 ### Added
