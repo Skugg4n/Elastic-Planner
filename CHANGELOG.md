@@ -5,6 +5,59 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-02-28
+
+### Added
+
+#### 1. ESC stänger alla menyer
+- Escape-tangenten stänger nu ALLA öppna menyer, modaler och sidebars (editBlockModal, selectedBlockIds, templateDropdownDay, reportSidebar)
+
+#### 2. Halvtimmes-slots
+- Klicka i nedre halvan av en timme-cell skapar block som börjar på XX:30 istället för XX:00
+- Samma precision som redan fanns vid drag & drop
+
+#### 3. Backup-block borttagna
+- "Backup: Cykel" (inaktiva standardblock) borttagna från default-veckodata
+- OBS: Befintliga block i localStorage påverkas inte, radera manuellt
+
+#### 4. Nytt färgschema 🎨
+- 10 nya färger baserade på användarens palett: Ink Black (#001219), Dark Teal (#005f73), Dark Cyan (#0a9396), Pearl Aqua (#94d2bd), Vanilla Custard (#e9d8a6), Golden Orange (#ee9b00), Burnt Caramel (#ca6702), Rusty Spice (#bb3e03), Oxidized Iron (#ae2012), Brown Red (#9b2226)
+- Alla block, headers, modaler, knappar och FAB använder nya färger via hex inline styles
+- Gammal Tailwind-baserad färgpalett helt ersatt
+- Automatisk migration av befintliga kategorier till nya hex-värden
+
+#### 5. Browser Push-notiser 🔔
+- Slå på i Inställningar: "Notiser vid passstart"
+- Browser-notis visas ~1 minut innan planerade block börjar
+- Kräver godkännande från webbläsaren
+
+#### 6. Dag undantagen från statistik 🏖️
+- Klicka på 🏖️ i dag-headern för att undanta en dag (semester/ledig)
+- Undantagna dagar exkluderas från flex-beräkning och mål-statistik
+- Visuell markering med semesteremoji
+
+#### 7. Förbättrad Totalt-beräkning 📊
+- Räknar nu bara fram till aktuell dag (inte framtida planerade block)
+- Framtida veckor exkluderas helt
+- Aktuell vecka: bara dagar t.o.m. idag räknas
+- Respekterar undantagna dagar
+
+#### 8. Fakturering i Rapport 💰
+- Nytt fält `invoiced` på block
+- Rapport-sidebar: Filter "Alla / Ej fakturerade / Fakturerade"
+- Summering: "Fakturerat: Xh | Kvar: Yh"
+- Batch-markering: "Markera som fakturerade" för filtrerade block
+- Blocks sparar `invoicedAt` timestamp vid markering
+
+### Technical
+- **Version**: 1.14.1 → 1.15.0
+- **Färgsystem**: Tailwind-klasser → hex inline styles med fallbacks
+- **Migration**: Automatisk konvertering av gamla kategorifärger vid laddning
+- **Block-migration**: `invoiced: false` läggs till automatiskt på befintliga block
+- **Ny state**: `notificationsEnabled`, `excludedDays`, `filterInvoice`
+- **Ny localStorage**: `elastic-planner-excluded-days`
+- **Nytt useEffect**: 60-sekunders intervall för notis-check
+
 ## [1.14.1] - 2026-02-27
 
 ### Fixed - CRITICAL

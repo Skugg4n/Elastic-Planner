@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.14.1';
+const APP_VERSION = '1.15.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -12,16 +12,19 @@ const CATEGORIES_KEY = 'elastic-planner-categories';
 const FLEX_KEY = 'elastic-planner-flex';
 const DEFAULT_TEMPLATE_KEY = 'elastic-planner-default-template';
 const BANK_KEY = 'elastic-planner-bank';
+const EXCLUDED_DAYS_KEY = 'elastic-planner-excluded-days';
 
 const COLOR_PALETTE = [
-  { id: 'zinc-900', bg: 'bg-zinc-900', text: 'text-white', border: 'border-zinc-900', iconColor: 'text-zinc-900', borderColor: 'border-zinc-900', doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75' },
-  { id: 'blue-600', bg: 'bg-blue-600', text: 'text-white', border: 'border-blue-700', iconColor: 'text-blue-600', borderColor: 'border-blue-300', doneStyle: 'bg-blue-50 text-blue-600 border-blue-200 line-through opacity-75' },
-  { id: 'red-600', bg: 'bg-red-600', text: 'text-white', border: 'border-red-700', iconColor: 'text-red-600', borderColor: 'border-red-300', doneStyle: 'bg-red-50 text-red-600 border-red-200 line-through opacity-75' },
-  { id: 'emerald-500', bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600', iconColor: 'text-emerald-600', borderColor: 'border-emerald-300', doneStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-75' },
-  { id: 'amber-500', bg: 'bg-amber-500', text: 'text-white', border: 'border-amber-600', iconColor: 'text-amber-600', borderColor: 'border-amber-300', doneStyle: 'bg-amber-50 text-amber-600 border-amber-200 line-through opacity-75' },
-  { id: 'purple-600', bg: 'bg-purple-600', text: 'text-white', border: 'border-purple-700', iconColor: 'text-purple-600', borderColor: 'border-purple-300', doneStyle: 'bg-purple-50 text-purple-600 border-purple-200 line-through opacity-75' },
-  { id: 'pink-500', bg: 'bg-pink-500', text: 'text-white', border: 'border-pink-600', iconColor: 'text-pink-600', borderColor: 'border-pink-300', doneStyle: 'bg-pink-50 text-pink-600 border-pink-200 line-through opacity-75' },
-  { id: 'zinc-200', bg: 'bg-zinc-200', text: 'text-zinc-900', border: 'border-zinc-300', iconColor: 'text-zinc-600', borderColor: 'border-zinc-300', doneStyle: 'bg-zinc-50 text-zinc-500 border-zinc-200 line-through opacity-75' },
+  { id: 'ink-black', hex: '#001219', textHex: '#ffffff', borderHex: '#001219', doneHex: '#e8eaed', doneTextHex: '#5f6368', doneBorderHex: '#dadce0' },
+  { id: 'dark-teal', hex: '#005f73', textHex: '#ffffff', borderHex: '#004d5e', doneHex: '#e0f2f1', doneTextHex: '#005f73', doneBorderHex: '#b2dfdb' },
+  { id: 'dark-cyan', hex: '#0a9396', textHex: '#ffffff', borderHex: '#078385', doneHex: '#e0f7fa', doneTextHex: '#0a9396', doneBorderHex: '#b2ebf2' },
+  { id: 'pearl-aqua', hex: '#94d2bd', textHex: '#001219', borderHex: '#7bc4ad', doneHex: '#f0faf6', doneTextHex: '#5a9e87', doneBorderHex: '#c8e6d8' },
+  { id: 'vanilla', hex: '#e9d8a6', textHex: '#001219', borderHex: '#d4c48e', doneHex: '#fdf8e8', doneTextHex: '#8a7a3a', doneBorderHex: '#e9d8a6' },
+  { id: 'golden-orange', hex: '#ee9b00', textHex: '#001219', borderHex: '#d68a00', doneHex: '#fff8e1', doneTextHex: '#b87700', doneBorderHex: '#ffe0b2' },
+  { id: 'burnt-caramel', hex: '#ca6702', textHex: '#ffffff', borderHex: '#a85500', doneHex: '#fff3e0', doneTextHex: '#ca6702', doneBorderHex: '#ffcc80' },
+  { id: 'rusty-spice', hex: '#bb3e03', textHex: '#ffffff', borderHex: '#9a3300', doneHex: '#fbe9e7', doneTextHex: '#bb3e03', doneBorderHex: '#ffab91' },
+  { id: 'oxidized-iron', hex: '#ae2012', textHex: '#ffffff', borderHex: '#8e1a0e', doneHex: '#ffebee', doneTextHex: '#ae2012', doneBorderHex: '#ef9a9a' },
+  { id: 'brown-red', hex: '#9b2226', textHex: '#ffffff', borderHex: '#7d1b1f', doneHex: '#fce4ec', doneTextHex: '#9b2226', doneBorderHex: '#ef9a9a' },
 ];
 
 const ICON_OPTIONS = ['Briefcase', 'PenTool', 'Zap', 'Coffee', 'Star', 'Heart', 'Music', 'Book', 'Code', 'Dumbbell', 'Bike', 'Palette'];
@@ -30,12 +33,12 @@ const DEFAULT_CATEGORIES = {
   creative: {
     id: 'creative',
     label: 'Bok',
-    bg: 'bg-zinc-900',
-    text: 'text-white',
-    border: 'border-zinc-900',
-    doneStyle: 'bg-zinc-100 text-zinc-500 border-zinc-300 line-through opacity-75',
-    iconColor: 'text-zinc-900',
-    borderColor: 'border-zinc-900',
+    hex: '#001219',
+    textHex: '#ffffff',
+    borderHex: '#001219',
+    doneHex: '#e8eaed',
+    doneTextHex: '#5f6368',
+    doneBorderHex: '#dadce0',
     icon: 'PenTool',
     targetHoursPerWeek: null,
     weeklyGoalPoints: null,
@@ -43,12 +46,12 @@ const DEFAULT_CATEGORIES = {
   job: {
     id: 'job',
     label: 'Jobb',
-    bg: 'bg-zinc-200',
-    text: 'text-zinc-900',
-    border: 'border-zinc-300',
-    doneStyle: 'bg-zinc-50 text-zinc-500 border-zinc-200 line-through opacity-75',
-    iconColor: 'text-blue-600',
-    borderColor: 'border-blue-300',
+    hex: '#005f73',
+    textHex: '#ffffff',
+    borderHex: '#004d5e',
+    doneHex: '#e0f2f1',
+    doneTextHex: '#005f73',
+    doneBorderHex: '#b2dfdb',
     icon: 'Briefcase',
     targetHoursPerWeek: 24,
     weeklyGoalPoints: null,
@@ -56,12 +59,12 @@ const DEFAULT_CATEGORIES = {
   training: {
     id: 'training',
     label: 'Fys',
-    bg: 'bg-red-600',
-    text: 'text-white',
-    border: 'border-red-700',
-    doneStyle: 'bg-red-50 text-red-600 border-red-200 line-through opacity-75',
-    iconColor: 'text-red-600',
-    borderColor: 'border-red-300',
+    hex: '#ae2012',
+    textHex: '#ffffff',
+    borderHex: '#8e1a0e',
+    doneHex: '#ffebee',
+    doneTextHex: '#ae2012',
+    doneBorderHex: '#ef9a9a',
     icon: 'Zap',
     targetHoursPerWeek: null,
     weeklyGoalPoints: 10,
@@ -69,12 +72,12 @@ const DEFAULT_CATEGORIES = {
   life: {
     id: 'life',
     label: 'Livet',
-    bg: 'bg-emerald-500',
-    text: 'text-white',
-    border: 'border-emerald-600',
-    doneStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-75',
-    iconColor: 'text-emerald-600',
-    borderColor: 'border-emerald-300',
+    hex: '#0a9396',
+    textHex: '#ffffff',
+    borderHex: '#078385',
+    doneHex: '#e0f7fa',
+    doneTextHex: '#0a9396',
+    doneBorderHex: '#b2ebf2',
     icon: 'Coffee',
     targetHoursPerWeek: null,
     weeklyGoalPoints: null,
@@ -345,7 +348,6 @@ const generateStandardWeek = (weekId) => {
     add(d, 12, 2, 'job', 'Jobb');
     add(d, 14, 2, 'job', 'Jobb');
     add(d, 16, 1, 'job', 'Jobb');
-    add(d, 21, 1, 'training', 'Backup: Cykel', 'inactive');
   });
 
   add(5, 10, 2, 'training', 'Simhallen');
@@ -480,6 +482,24 @@ const migrateParallelId = (weeksData) => {
   return migratedData;
 };
 
+const migrateCategoryColors = (weeksData) => {
+  // v1.14.1 -> v1.15.0: Migrate from Tailwind classes to hex color values
+  const migratedData = {};
+
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    migratedData[weekId] = {
+      calendar: (weekData.calendar || []).map((block) => ({
+        ...block,
+        invoiced: block.invoiced ?? false,
+      })),
+      points: weekData.points || {},
+      excludedDays: weekData.excludedDays || [],
+    };
+  }
+
+  return migratedData;
+};
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -493,6 +513,7 @@ const getInitialWeeksData = () => {
         migrated = migrateBankRemoval(migrated);
         migrated = migrateLogsToPoints(migrated);
         migrated = migrateParallelId(migrated);
+        migrated = migrateCategoryColors(migrated);
         return migrated;
       }
     } catch (e) {
@@ -884,12 +905,13 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
   );
 }
 
-function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories }) {
+function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories, onUpdateBlocks }) {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterProject, setFilterProject] = useState('');
   const [filterTask, setFilterTask] = useState('');
   const [weekStart, setWeekStart] = useState(currentWeekIndex);
   const [weekEnd, setWeekEnd] = useState(currentWeekIndex);
+  const [invoiceFilter, setInvoiceFilter] = useState('all'); // 'all', 'invoiced', 'not-invoiced'
 
   const reportData = generateReport(weeksData, weekStart, weekEnd, {
     categoryId: filterCategory,
@@ -982,6 +1004,16 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
             ))}
           </select>
 
+          <select
+            value={invoiceFilter}
+            onChange={(e) => setInvoiceFilter(e.target.value)}
+            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900 mb-3"
+          >
+            <option value="all">Alla | Fakturerad status</option>
+            <option value="not-invoiced">Ej fakturerade</option>
+            <option value="invoiced">Fakturerade</option>
+          </select>
+
           <div className="flex gap-2 items-center mb-2">
             <input
               type="number"
@@ -1034,7 +1066,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
 
         {/* Stats - Large Numbers */}
         <div className="flex-none p-4 border-b border-zinc-200 bg-white">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="bg-zinc-900 p-3 rounded-lg text-center">
               <div className="text-2xl font-black text-white">{reportData.totalHours}<span className="text-sm font-normal">h</span></div>
               <div className="text-[10px] text-zinc-400 uppercase mt-1">Timmar</div>
@@ -1048,6 +1080,35 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
               <div className="text-[10px] text-zinc-400 uppercase mt-1">Projekt</div>
             </div>
           </div>
+
+          {/* Invoice Stats */}
+          {(() => {
+            const allBlocks = Object.values(weeksData)
+              .filter((wd, i) => (i + 1) >= weekStart && (i + 1) <= weekEnd)
+              .flatMap(wd => wd.calendar || []);
+            const filteredBlocks = allBlocks.filter(b => {
+              if (filterCategory && b.type !== filterCategory) return false;
+              if (filterProject && b.projectName !== filterProject) return false;
+              if (filterTask && b.taskName !== filterTask) return false;
+              if (invoiceFilter === 'invoiced' && !b.invoiced) return false;
+              if (invoiceFilter === 'not-invoiced' && b.invoiced) return false;
+              return true;
+            });
+            const invoicedHours = filteredBlocks.filter(b => b.invoiced).reduce((a, b) => a + b.duration, 0);
+            const remainingHours = filteredBlocks.filter(b => !b.invoiced).reduce((a, b) => a + b.duration, 0);
+            return (
+              <div className="text-xs text-zinc-600 space-y-1 pt-2 border-t border-zinc-200">
+                <div className="flex justify-between">
+                  <span>Fakturerat:</span>
+                  <span className="font-bold">{Math.round(invoicedHours * 10) / 10}h</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Kvar att fakturera:</span>
+                  <span className="font-bold text-amber-600">{Math.round(remainingHours * 10) / 10}h</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Report Data - Cleaner Cards */}
@@ -1081,8 +1142,31 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories 
           )}
         </div>
 
-        {/* Footer - Export */}
-        <div className="flex-none p-4 border-t border-zinc-200 bg-white">
+        {/* Footer - Export & Invoice Actions */}
+        <div className="flex-none p-4 border-t border-zinc-200 bg-white space-y-2">
+          {invoiceFilter === 'not-invoiced' && (() => {
+            const allBlocks = Object.values(weeksData)
+              .filter((wd, i) => (i + 1) >= weekStart && (i + 1) <= weekEnd)
+              .flatMap(wd => wd.calendar || []);
+            const filteredBlocks = allBlocks.filter(b => {
+              if (filterCategory && b.type !== filterCategory) return false;
+              if (filterProject && b.projectName !== filterProject) return false;
+              if (filterTask && b.taskName !== filterTask) return false;
+              return !b.invoiced;
+            });
+            return filteredBlocks.length > 0 ? (
+              <button
+                onClick={() => {
+                  if (onUpdateBlocks) {
+                    onUpdateBlocks(filteredBlocks.map(b => ({ ...b, invoiced: true, invoicedAt: Date.now() })));
+                  }
+                }}
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+              >
+                ✓ Markera {filteredBlocks.length} som fakturerade
+              </button>
+            ) : null;
+          })()}
           <button
             onClick={handleExport}
             className="w-full bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
@@ -1164,13 +1248,24 @@ export default function ElasticPlanner() {
   const [bankAddLabel, setBankAddLabel] = useState('');
   const [bankAddDuration, setBankAddDuration] = useState(1);
   const [bankAddCategory, setBankAddCategory] = useState('life');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const fileInputRef = useRef(null);
   const realTodayIndex = (new Date().getDay() + 6) % 7;
   const isCurrentWeek = currentWeekIndex === getCurrentWeek();
   const todayIndex = isCurrentWeek ? realTodayIndex : -1; // -1 means no today indicator
-  const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {} };
-  const { calendar, points } = currentData;
+  const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {}, excludedDays: [] };
+  const { calendar, points, excludedDays = [] } = currentData;
+
+  const toggleExcludedDay = (dayIndex) => {
+    const current = excludedDays || [];
+    const newExcluded = current.includes(dayIndex)
+      ? current.filter(d => d !== dayIndex)
+      : [...current, dayIndex];
+    const newData = { ...weeksData };
+    newData[currentWeekIndex] = { ...newData[currentWeekIndex], excludedDays: newExcluded };
+    setWeeksData(newData);
+  };
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(weeksData));
@@ -1249,6 +1344,10 @@ export default function ElasticPlanner() {
         setMicroMenuOpen(false);
         setEditingLogId(null);
         setEditingLogTime(null);
+        setEditBlockModal(null);
+        setSelectedBlockIds([]);
+        setTemplateDropdownDay(null);
+        setReportSidebarOpen(false);
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockIds.length > 0) {
         const ids = new Set(selectedBlockIds);
@@ -1291,6 +1390,27 @@ export default function ElasticPlanner() {
       setWeeksData((prev) => ({ ...prev, [currentWeekIndex]: generateStandardWeek(currentWeekIndex) }));
     }
   }, [currentWeekIndex, weeksData]);
+
+  useEffect(() => {
+    if (!notificationsEnabled) return;
+    const interval = setInterval(() => {
+      const now = new Date();
+      const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
+      const todayDayIndex = (now.getDay() + 6) % 7;
+      if (!isCurrentWeek) return;
+
+      calendar.filter(b => b.day === todayDayIndex && b.status === 'planned').forEach(block => {
+        const diff = block.start - currentTimeDecimal;
+        if (diff > 0 && diff <= 1/60) { // within 1 minute
+          new Notification(`⏰ ${block.label}`, {
+            body: `${block.duration}h ${categories[block.type]?.label || ''}`,
+            icon: '⏰'
+          });
+        }
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [notificationsEnabled, calendar, isCurrentWeek, categories]);
 
   const updateCurrentWeek = (newCalendar, newPoints) => {
     setWeeksData((prev) => ({
@@ -2094,15 +2214,36 @@ Lätt armhävningspåminnelse
 
   // Cumulative flex: sum done hours vs target across ALL weeks for categories with targets
   const cumulativeFlex = {};
+  const now = new Date();
+  const currentDayIndex = (now.getDay() + 6) % 7;
+
   Object.values(categories).forEach(cat => {
     if (!cat.targetHoursPerWeek) return;
     let totalDone = 0;
     let weekCount = 0;
-    Object.values(weeksData).forEach(weekData => {
+    Object.entries(weeksData).forEach(([weekId, weekData]) => {
       if (!weekData.calendar) return;
-      const weekDone = weekData.calendar
-        .filter(b => b.type === cat.id && b.status === 'done')
-        .reduce((a, b) => a + b.duration, 0);
+      const weekIndex = parseInt(weekId);
+
+      // Determine which blocks to count based on week position
+      let blocksToCount = weekData.calendar.filter(b => b.type === cat.id && b.status === 'done');
+
+      // For current week: only count days up to and including today, skip excluded days
+      if (weekIndex === currentWeekIndex) {
+        const weekExcludedDays = weekData.excludedDays || [];
+        blocksToCount = blocksToCount.filter(b =>
+          b.day <= currentDayIndex && !weekExcludedDays.includes(b.day)
+        );
+      } else if (weekIndex > currentWeekIndex) {
+        // Skip future weeks
+        blocksToCount = [];
+      } else {
+        // For past weeks: count all done blocks, but skip excluded days
+        const weekExcludedDays = weekData.excludedDays || [];
+        blocksToCount = blocksToCount.filter(b => !weekExcludedDays.includes(b.day));
+      }
+
+      const weekDone = blocksToCount.reduce((a, b) => a + b.duration, 0);
       // Only count weeks that have any blocks for this category (to avoid counting empty weeks)
       if (weekDone > 0 || weekData.calendar.some(b => b.type === cat.id)) {
         totalDone += weekDone;
@@ -2308,6 +2449,9 @@ Lätt armhävningspåminnelse
                         {hasTrainingFire && (
                           <span className="text-lg">🔥</span>
                         )}
+                        <button onClick={() => toggleExcludedDay(dIndex)} className="text-[10px] opacity-50 hover:opacity-100 transition-opacity" title="Undanta dag från statistik">
+                          {excludedDays.includes(dIndex) ? '🏖️' : ''}
+                        </button>
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="relative">
@@ -2409,7 +2553,11 @@ Lätt armhävningspåminnelse
                       >
                         {!calendar.some((b) => b.day === dIndex && b.start <= h && b.start + b.duration > h) && (
                           <button
-                            onClick={() => setAddModal({ day: dIndex, hour: h })}
+                            onClick={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const isBottom = (e.clientY - rect.top) > rect.height / 2;
+                              setAddModal({ day: dIndex, hour: isBottom ? h + 0.5 : h });
+                            }}
                             className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 text-zinc-300 hover:text-zinc-500"
                           >
                             <Plus size={16} />
@@ -2572,7 +2720,7 @@ Lätt armhävningspåminnelse
         </div>
 
         {selectedBlockIds.length > 1 && (
-          <div className="bulk-menu absolute bottom-24 left-1/2 -translate-x-1/2 bg-zinc-900 text-white rounded-full px-6 py-3 shadow-2xl flex items-center gap-4 z-[60] animate-in slide-in-from-bottom-4">
+          <div className="bulk-menu absolute bottom-24 left-1/2 -translate-x-1/2 text-white rounded-full px-6 py-3 shadow-2xl flex items-center gap-4 z-[60] animate-in slide-in-from-bottom-4" style={{ backgroundColor: '#001219' }}>
             <span className="font-bold text-sm">{selectedBlockIds.length} markerade</span>
             <div className="h-4 w-px bg-white/20" />
             <button onClick={handleBulkToggle} className="flex items-center gap-2 hover:text-green-400 text-sm font-bold">
@@ -2605,7 +2753,11 @@ Lätt armhävningspåminnelse
                   <button
                     key={cat.id}
                     onClick={() => setAddModal({ ...addModal, selectedCategory: cat.id })}
-                    className={`w-10 h-10 rounded-lg ${cat.bg} ${cat.text} flex items-center justify-center text-xs font-bold hover:scale-110 transition-transform`}
+                    style={{
+                      backgroundColor: cat.hex || '#001219',
+                      color: cat.textHex || '#fff',
+                    }}
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold hover:scale-110 transition-transform"
                     title={cat.label}
                   >
                     {cat.label.substring(0, 1)}
@@ -2726,7 +2878,7 @@ Lätt armhävningspåminnelse
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setEditBlockModal(null)}>
             <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="bg-zinc-900 p-4 flex justify-between items-center">
+              <div className="p-4 flex justify-between items-center" style={{ backgroundColor: '#001219' }}>
                 <h3 className="text-sm font-bold uppercase text-white flex items-center gap-2"><Edit3 size={14} /> Redigera block</h3>
                 <button onClick={() => setEditBlockModal(null)} className="text-zinc-400 hover:text-white"><X size={16} /></button>
               </div>
@@ -2752,9 +2904,13 @@ Lätt armhävningspåminnelse
                       <button
                         key={id}
                         onClick={() => setEditBlockModal({ ...editBlockModal, type: id })}
+                        style={editBlockModal.type === id ? {
+                          backgroundColor: cat.hex || '#001219',
+                          color: cat.textHex || '#fff',
+                        } : undefined}
                         className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
                           editBlockModal.type === id
-                            ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-black`
+                            ? 'ring-2 ring-offset-1 ring-black'
                             : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                         }`}
                       >
@@ -3188,9 +3344,9 @@ Lätt armhävningspåminnelse
       {settingsOpen && (
         <div className="settings-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setSettingsOpen(false)}>
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center sticky top-0 z-10">
-              <h3 className="text-lg font-bold text-zinc-700">Inställningar</h3>
-              <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-zinc-900">
+            <div className="p-4 border-b border-zinc-100 flex justify-between items-center sticky top-0 z-10" style={{ backgroundColor: '#001219', color: '#fff' }}>
+              <h3 className="text-lg font-bold">Inställningar</h3>
+              <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-white">
                 <X size={20} />
               </button>
             </div>
@@ -3242,7 +3398,11 @@ Lätt armhävningspåminnelse
                                   [cat.id]: { ...prev[cat.id], ...colorStyle }
                                 }));
                               }}
-                              className={`w-5 h-5 rounded-full ${color.bg} border-2 ${cat.bg === color.bg ? 'border-black' : 'border-transparent'}`}
+                              style={{
+                                backgroundColor: color.hex,
+                                borderColor: cat.hex === color.hex ? '#000' : 'transparent',
+                              }}
+                              className="w-5 h-5 rounded-full border-2"
                               title={color.id}
                             />
                           ))}
@@ -3365,6 +3525,28 @@ Lätt armhävningspåminnelse
 
               <hr className="my-4" />
 
+              {/* Notifications Section */}
+              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Notifikationer</h4>
+              <div className="flex items-center justify-between py-3 bg-zinc-50 px-3 rounded-lg mb-4">
+                <span className="text-sm font-bold text-zinc-700">Notiser vid passstart</span>
+                <button onClick={async () => {
+                  if (!notificationsEnabled) {
+                    const perm = await Notification.requestPermission();
+                    if (perm === 'granted') setNotificationsEnabled(true);
+                  } else {
+                    setNotificationsEnabled(false);
+                  }
+                }} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                  notificationsEnabled
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-zinc-300 text-zinc-700 hover:bg-zinc-400'
+                }`}>
+                  {notificationsEnabled ? '🔔 På' : '🔕 Av'}
+                </button>
+              </div>
+
+              <hr className="my-4" />
+
               {/* Default Template Section */}
               <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Standardmall för nya veckor</h4>
               {(() => {
@@ -3402,6 +3584,22 @@ Lätt armhävningspåminnelse
         weeksData={weeksData}
         currentWeekIndex={currentWeekIndex}
         categories={categories}
+        onUpdateBlocks={(blocksToUpdate) => {
+          // Update blocks across all weeks
+          const updatedWeeksData = { ...weeksData };
+          const idsToUpdate = new Set(blocksToUpdate.map(b => b.id));
+          Object.entries(updatedWeeksData).forEach(([weekId, weekData]) => {
+            if (weekData.calendar) {
+              updatedWeeksData[weekId] = {
+                ...weekData,
+                calendar: weekData.calendar.map(b =>
+                  idsToUpdate.has(b.id) ? blocksToUpdate.find(ub => ub.id === b.id) : b
+                )
+              };
+            }
+          });
+          setWeeksData(updatedWeeksData);
+        }}
       />
 
       {/* Bank Panel */}
@@ -3520,7 +3718,10 @@ Lätt armhävningspåminnelse
       {/* Floating Action Button - Add Point */}
       <button
         onClick={() => setAddPointModalOpen(true)}
-        className="fixed bottom-20 right-6 w-14 h-14 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] transition-all hover:scale-110 active:scale-95"
+        className="fixed bottom-20 right-6 w-14 h-14 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] transition-all hover:scale-110 active:scale-95"
+        style={{ backgroundColor: '#ee9b00' }}
+        onMouseEnter={(e) => e.target.style.backgroundColor = '#d68a00'}
+        onMouseLeave={(e) => e.target.style.backgroundColor = '#ee9b00'}
         title="Lägg till punkt"
       >
         <Zap size={24} fill="currentColor" />
@@ -3736,10 +3937,11 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
     return (
       <div
         onClick={() => onAction('toggle')}
-        className="absolute border-2 border-dashed border-zinc-300 text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400"
+        className="absolute border-2 border-dashed text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400"
         style={{
           ...positionStyle,
-          ...(isParallel ? {} : { left: '4px', right: '4px' })
+          ...(isParallel ? {} : { left: '4px', right: '4px' }),
+          borderColor: cat?.borderHex || cat?.border || '#d4d4d8',
         }}
       >
         {block.label}
@@ -3754,12 +3956,16 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
         onClick={onClick}
         className={`
         block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2
-        ${isDone ? cat.doneStyle : `${cat.bg} ${cat.text} ${cat.border}`}
         ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}
       `}
         style={{
           ...positionStyle,
-          ...(isParallel ? {} : { left: '4px', right: '4px' })
+          ...(isParallel ? {} : { left: '4px', right: '4px' }),
+          backgroundColor: isDone ? (cat?.doneHex || '#f4f4f5') : (cat?.hex || '#001219'),
+          color: isDone ? (cat?.doneTextHex || '#71717a') : (cat?.textHex || '#fff'),
+          borderLeftColor: isDone ? (cat?.doneBorderHex || '#d4d4d8') : (cat?.borderHex || cat?.hex || '#001219'),
+          borderLeftWidth: '2px',
+          ...(isDone ? { textDecoration: 'line-through', opacity: 0.75 } : {}),
         }}
       >
         <div className="flex justify-between items-start p-1.5 h-full relative">
