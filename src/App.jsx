@@ -3137,7 +3137,20 @@ Lätt armhävningspåminnelse
                       list="project-history-list"
                     />
                     <datalist id="project-history-list">
-                      {projectHistory.map((p) => <option key={p} value={p} />)}
+                      {(() => {
+                        // projectHistory can be an object { projects: { catId: { projName: {...} } } } or legacy array
+                        if (Array.isArray(projectHistory)) return projectHistory.map((p) => <option key={p} value={p} />);
+                        if (projectHistory?.projects) {
+                          const allProjects = new Set();
+                          Object.values(projectHistory.projects).forEach(catProjects => {
+                            if (catProjects && typeof catProjects === 'object') {
+                              Object.keys(catProjects).forEach(name => allProjects.add(name));
+                            }
+                          });
+                          return [...allProjects].map((p) => <option key={p} value={p} />);
+                        }
+                        return null;
+                      })()}
                     </datalist>
                   </div>
                   <div className="flex-1">
@@ -3190,10 +3203,15 @@ Lätt armhävningspåminnelse
                     const block = updatedCalendar.find(b => b.id === editBlockModal.blockId);
                     updateCurrentWeek(resolveCollisions(updatedCalendar, block), points);
                     // Update project history
-                    if (editBlockModal.projectName && !projectHistory.includes(editBlockModal.projectName)) {
-                      const newHistory = [...projectHistory, editBlockModal.projectName];
-                      setProjectHistory(newHistory);
-                      localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(newHistory));
+                    if (editBlockModal.projectName && editBlockModal.taskName) {
+                      const updatedHistory = updateProjectHistoryRecord(
+                        projectHistory,
+                        editBlockModal.type,
+                        editBlockModal.projectName,
+                        editBlockModal.taskName
+                      );
+                      setProjectHistory(updatedHistory);
+                      saveProjectHistory(updatedHistory);
                     }
                     setEditBlockModal(null);
                   }}
