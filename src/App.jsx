@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.17.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
@@ -2559,9 +2559,10 @@ Lätt armhävningspåminnelse
 
               const dayCategoryStats = Object.entries(categories).map(([catId, cat]) => {
                 const blocks = dayBlocks.filter((b) => b.type === catId);
+                const totalHours = blocks.reduce((a, b) => a + b.duration, 0);
                 const doneHours = blocks.filter(b => b.status === 'done').reduce((a, b) => a + b.duration, 0);
-                return { catId, label: cat.label, blocks, doneHours, hasDone: blocks.some(b => b.status === 'done') };
-              }).filter(s => s.blocks.length > 0);
+                return { catId, label: cat.label, hex: cat.hex, blocks, totalHours, doneHours, hasDone: blocks.some(b => b.status === 'done') };
+              }).filter(s => s.totalHours > 0);
 
               return (
                 <div
@@ -2673,10 +2674,10 @@ Lätt armhävningspåminnelse
                         </button>
                       </div>
                     </div>
-                    <div className="flex gap-1 text-[8px] font-bold opacity-70">
+                    <div className="flex gap-1.5 text-[8px] font-bold">
                       {dayCategoryStats.map(s => (
-                        <span key={s.catId} className={s.hasDone ? 'text-black' : ''}>
-                          {s.label.substring(0, 1)}:{s.doneHours}h
+                        <span key={s.catId} style={{ color: s.hex, opacity: s.hasDone ? 1 : 0.5 }}>
+                          {s.label.substring(0, 1)}:{s.totalHours}h
                         </span>
                       ))}
                     </div>
@@ -3340,8 +3341,9 @@ Lätt armhävningspåminnelse
                                 key={cat.id}
                                 onClick={() => updatePointCategory(selectedLogDay, log.id, cat.id)}
                                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                                  log.categoryId === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-zinc-400` : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                                  log.categoryId === cat.id ? 'ring-2 ring-offset-1 ring-zinc-400' : 'opacity-40 hover:opacity-70'
                                 }`}
+                                style={{ backgroundColor: cat.hex, color: cat.textHex }}
                                 title={cat.label}
                               >
                                 {getCategoryIcon(cat.id, 13, categories)}
@@ -3370,7 +3372,7 @@ Lätt armhävningspåminnelse
                     onClick={() => addPoint(selectedLogDay, preset.label, null, preset.category)}
                     className="bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1.5 items-center"
                   >
-                    <div className={`w-2 h-2 rounded-full ${presetCategory.bg}`} />
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: presetCategory.hex }} />
                     {preset.label}
                   </button>
                 );
@@ -3383,8 +3385,9 @@ Lätt armhävningspåminnelse
                   key={cat.id}
                   onClick={() => setSelectedLogCategory(cat.id)}
                   className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                    selectedLogCategory === cat.id ? `${cat.bg} ${cat.text} ring-2 ring-zinc-900` : `${cat.bg} ${cat.text} opacity-50 hover:opacity-100`
+                    selectedLogCategory === cat.id ? 'ring-2 ring-zinc-900' : 'opacity-50 hover:opacity-100'
                   }`}
+                  style={{ backgroundColor: cat.hex, color: cat.textHex }}
                   title={cat.label}
                 >
                   {getCategoryIcon(cat.id, 15, categories)}
@@ -3784,23 +3787,36 @@ Lätt armhävningspåminnelse
         }}
       />
 
-      {/* Bank Panel */}
+      {/* Bank Panel — Simple box for storing blocks */}
       <div className="fixed bottom-0 left-0 right-0 z-50">
         {bankOpen ? (
-          <div className="bg-white border-t border-zinc-300 shadow-2xl max-h-[50vh] overflow-y-auto">
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-zinc-900">📦 Bank</h3>
+          <div
+            className="bg-white border-t-2 border-zinc-300 shadow-2xl max-h-[40vh] overflow-y-auto"
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (draggedBlock && !draggedBlock.isFromBank) {
+                addToBank(draggedBlock.id);
+              }
+            }}
+          >
+            <div className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📦</span>
+                  <h3 className="text-sm font-bold text-zinc-700">Lådan</h3>
+                  <span className="text-xs text-zinc-400">{bankItems.length} block</span>
+                </div>
                 <button
                   onClick={() => setBankOpen(false)}
                   className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-600"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
 
               {bankItems.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2 mb-4">
+                <div className="flex flex-wrap gap-2">
                   {bankItems.map((item) => {
                     const cat = categories[item.type] || categories.life || Object.values(categories)[0];
                     return (
@@ -3812,87 +3828,36 @@ Lätt armhävningspåminnelse
                           setDraggedBlock({ ...item, isFromBank: true });
                         }}
                         onDragEnd={() => setDraggedBlock(null)}
-                        className="flex items-center gap-2 p-2 bg-zinc-50 border border-zinc-200 rounded hover:bg-zinc-100 cursor-move transition-colors"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-move transition-all hover:scale-105 hover:shadow-md border border-white/20"
+                        style={{ backgroundColor: cat.hex, color: cat.textHex }}
                       >
-                        <div className={`w-3 h-3 rounded-full ${cat.bg}`} />
-                        <div className="flex-grow min-w-0">
-                          <p className="text-sm font-bold text-zinc-800 truncate">{item.label}</p>
-                          {item.projectName && (
-                            <p className="text-xs text-zinc-500">{item.projectName} {item.taskName ? `/ ${item.taskName}` : ''}</p>
-                          )}
-                        </div>
-                        <span className="text-xs font-bold text-zinc-600">{item.duration}h</span>
+                        <span className="text-xs font-bold truncate max-w-[120px]">{item.label}</span>
+                        <span className="text-[10px] opacity-70">{item.duration}h</span>
                         <button
-                          onClick={() => removeFromBank(item.id)}
-                          className="p-1 text-zinc-400 hover:text-red-500"
+                          onClick={(e) => { e.stopPropagation(); removeFromBank(item.id); }}
+                          className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity"
                         >
-                          <Trash2 size={14} />
+                          <X size={12} />
                         </button>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-zinc-500 text-center py-4 mb-4">Ingen objekt i banken</p>
-              )}
-
-              <div className="border-t border-zinc-200 pt-4 mt-4">
-                <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Lägg till till bank</h4>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Aktivitetsetikett"
-                    value={bankAddLabel}
-                    onChange={(e) => setBankAddLabel(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-zinc-300 rounded text-sm focus:outline-none focus:border-blue-500"
-                    onKeyPress={(e) => e.key === 'Enter' && addQuickBankItem()}
-                  />
-                  <div className="flex gap-2">
-                    <select
-                      value={bankAddDuration}
-                      onChange={(e) => setBankAddDuration(parseFloat(e.target.value))}
-                      className="flex-grow px-2 py-1.5 border border-zinc-300 rounded text-sm focus:outline-none focus:border-blue-500"
-                    >
-                      <option value={0.5}>0.5h</option>
-                      <option value={1}>1h</option>
-                      <option value={1.5}>1.5h</option>
-                      <option value={2}>2h</option>
-                      <option value={3}>3h</option>
-                      <option value={4}>4h</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-1">
-                    {Object.values(categories).map((cat) => (
-                      <button
-                        key={cat.id}
-                        onClick={() => setBankAddCategory(cat.id)}
-                        className={`flex-grow px-2 py-1.5 rounded text-xs font-bold transition-all ${
-                          bankAddCategory === cat.id
-                            ? `${cat.bg} ${cat.text} ring-2 ring-offset-1 ring-black`
-                            : `${cat.bg} ${cat.text} opacity-50 hover:opacity-75`
-                        }`}
-                      >
-                        {cat.label}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={addQuickBankItem}
-                    className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded text-sm transition-colors"
-                  >
-                    Lägg till
-                  </button>
+                <div className="flex items-center justify-center py-6 border-2 border-dashed border-zinc-200 rounded-lg text-zinc-400">
+                  <p className="text-sm">Dra block hit för att spara dem</p>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         ) : (
           <button
             onClick={() => setBankOpen(true)}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 font-bold rounded-t-lg shadow-2xl flex items-center justify-center gap-2 transition-colors"
-            title="Öppna Bank"
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-2 font-bold rounded-t-lg shadow-2xl flex items-center justify-center gap-2 transition-colors text-sm"
+            title="Öppna Lådan"
+            onDragOver={(e) => { e.preventDefault(); setBankOpen(true); }}
           >
-            <span>📦 Bank ({bankItems.length})</span>
+            <span>📦 Lådan ({bankItems.length})</span>
           </button>
         )}
       </div>
@@ -3964,7 +3929,8 @@ Lätt armhävningspåminnelse
                         setPointText(preset.label);
                         setPointCategory(preset.category);
                       }}
-                      className={`px-3 py-2 rounded-lg text-sm font-bold transition-colors ${presetCat.bg} ${presetCat.text} hover:opacity-80`}
+                      className="px-3 py-2 rounded-lg text-sm font-bold transition-colors hover:opacity-80"
+                      style={{ backgroundColor: presetCat.hex, color: presetCat.textHex }}
                     >
                       {preset.label}
                     </button>
@@ -4023,9 +3989,10 @@ Lätt armhävningspåminnelse
                       onClick={() => setPointCategory(cat.id)}
                       className={`flex-1 py-2 rounded-lg font-bold transition-all ${
                         pointCategory === cat.id
-                          ? `${cat.bg} ${cat.text} ring-2 ring-offset-2 ring-zinc-400`
-                          : `${cat.bg} ${cat.text} opacity-40 hover:opacity-70`
+                          ? 'ring-2 ring-offset-2 ring-zinc-400'
+                          : 'opacity-40 hover:opacity-70'
                       }`}
+                      style={{ backgroundColor: cat.hex, color: cat.textHex }}
                     >
                       {getCategoryIcon(cat.id, 20, categories)}
                     </button>
@@ -4156,7 +4123,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
           color: isDone ? (cat?.doneTextHex || '#71717a') : (cat?.textHex || '#fff'),
           borderLeftColor: isDone ? (cat?.doneBorderHex || '#d4d4d8') : (cat?.borderHex || cat?.hex || '#001219'),
           borderLeftWidth: '2px',
-          ...(isDone ? { textDecoration: 'line-through', opacity: 0.75 } : {}),
+          ...(isDone ? { opacity: 0.85 } : {}),
         }}
       >
         <div className="flex justify-between items-start p-1.5 h-full relative">
@@ -4181,7 +4148,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
               ) : (
                 <div className="flex flex-col leading-none w-full">
                   <div className="flex justify-between items-start w-full pr-4">
-                    <span className={`text-[10px] font-bold uppercase truncate ${isDone ? 'line-through decoration-zinc-300' : ''}`}>
+                    <span className="text-[10px] font-bold uppercase truncate">
                       {block.label}
                     </span>
                   </div>
@@ -4198,7 +4165,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
             </div>
 
             {block.description && (
-              <div className={`mt-1 text-[9px] leading-tight opacity-70 ${isDone ? 'line-through' : ''}`}>
+              <div className="mt-1 text-[9px] leading-tight opacity-70">
                 {(() => {
                   const parsed = parseCheckboxes(block.description);
                   if (parsed.hasCheckboxes) {
@@ -4231,7 +4198,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
                   isDone ? 'border-transparent bg-current opacity-100' : 'border-current'
                 }`}
               >
-                {isDone && <Check size={10} className={cat.bg.includes('white') ? 'text-zinc-900' : 'text-white'} strokeWidth={4} />}
+                {isDone && <Check size={10} style={{ color: cat?.doneTextHex || '#5f6368' }} strokeWidth={4} />}
               </button>
               <button
                 onClick={(e) => {

@@ -5,6 +5,18 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-02-28
+
+### Fixed
+- **Brutna kategorifärger:** Fixade 7 ställen där `cat.bg`/`cat.text` Tailwind-klasser användes istället för hex inline styles. Påverkade: kategori-knappar i "Lägg till punkt"-modalen, logg-sidebar kategoriväljare, logg-sidebar snabbval-prickar, bank-panelens färgprickar och kategori-knappar, snabbval-presets i punkt-modalen.
+- **Done-block styling:** Tog bort ful dubbel genomstrykning (`line-through` på container + label + description). Done-block visas nu med subtil opacity istället.
+- **Check-ikon logik:** Ersatte fragil `cat.bg.includes('white')` med korrekt `cat.doneTextHex`.
+- **Mini-stats inkonsistens:** Visar nu totalHours (inte bara doneHours) per kategori och bara kategorier med >0h.
+
+### Changed
+- **Mini-stats kategorifärger:** Varje kategoribokstav visas nu i sin respektive hex-färg under dagheadern.
+- **Banken → Lådan:** Helt omdesignad bank-panel. Borttagen "Lägg till"-formulär. Nu en enkel låda med drag-and-drop. Block visas som kompakta chipsar i kategorifärg. Dra block dit för att spara, dra ut för att använda. Auto-öppnas när du drar ett block mot den.
+
 ## [1.16.0] - 2026-02-28
 
 ### Added
