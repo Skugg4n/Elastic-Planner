@@ -5,6 +5,15 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-03-01
+
+### Fixed
+- **Inaktiva block borttagna:** Block med status "inactive" (t.ex. BACKUP: CYKEL) renderas inte längre i kalendervyn.
+
+### Changed
+- **Default blocklängd:** Nya block skapas nu med 0.5h (30 min) istället för 1h. Möjliggör mer granulär planering.
+- **Övernattning/overflow förbi midnatt:** Block kan nu förlängas förbi midnatt (00:00). I edit-modalen tolkas sluttider före starttiden som "nästa dag". Blocket delas automatiskt — huvuddelen stannar på ursprungsdagen (capped vid 24:00) och en overflow-del skapas på nästa dag (start 00:00). Komprimerade sent-natt-timmar (00:00–06:00) visas under den vanliga tidsgridet med mindre radhöjd.
+
 ## [1.17.0] - 2026-02-28
 
 ### Fixed

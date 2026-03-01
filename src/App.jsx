@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.18.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
+const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
+const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
 const DAYS = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
 const HOUR_HEIGHT = 4; // rem. 4rem = 1h.
 const LOCAL_STORAGE_KEY = 'elastic-planner-weeks';
@@ -1843,7 +1845,7 @@ export default function ElasticPlanner() {
   const addNewBlock = (type, projectName = null, taskName = null) => {
     if (!addModal) return;
     const { day, hour } = addModal;
-    const duration = 1;
+    const duration = 0.5;
     const newBlock = {
       id: `new-${Date.now()}`,
       day,
@@ -2547,6 +2549,22 @@ Lätt armhävningspåminnelse
                   {h}:00
                 </div>
               ))}
+              {/* Late-night hour labels — only show if any day has overflow blocks */}
+              {(() => {
+                const anyOverflow = calendar.some(b => b.start < 7);
+                if (!anyOverflow) return null;
+                const maxEnd = Math.ceil(Math.max(...calendar.filter(b => b.start < 7).map(b => b.start + b.duration)));
+                const lateHoursToShow = LATE_HOURS.filter(h => h < maxEnd);
+                return lateHoursToShow.map(h => (
+                  <div
+                    key={`late-label-${h}`}
+                    className="border-b border-zinc-100/50 text-[8px] font-medium text-zinc-300 pr-2 pt-0.5 text-right"
+                    style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                  >
+                    {h}:00
+                  </div>
+                ));
+              })()}
             </div>
 
             {DAYS.map((dayName, dIndex) => {
@@ -2717,6 +2735,21 @@ Lätt armhävningspåminnelse
                         )}
                       </div>
                     ))}
+
+                    {/* Late-night overflow hours (00:00-06:00) — shown when any day has overflow blocks */}
+                    {(() => {
+                      const anyOverflow = calendar.some(b => b.start < 7);
+                      if (!anyOverflow) return null;
+                      const maxEnd = Math.ceil(Math.max(...calendar.filter(b => b.start < 7).map(b => b.start + b.duration)));
+                      const lateHoursToShow = LATE_HOURS.filter(h => h < maxEnd);
+                      return lateHoursToShow.map(h => (
+                        <div
+                          key={`late-${h}`}
+                          className="border-b border-zinc-100/50 w-full relative"
+                          style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                        />
+                      ));
+                    })()}
 
                     {dropIndicator && dropIndicator.day === dIndex && dropIndicator.type !== 'resize' && (
                       <div
@@ -3096,16 +3129,23 @@ Lätt armhävningspåminnelse
                     </label>
                     <input
                       type="time"
-                      value={formatTime(endTime)}
+                      value={formatTime(endTime > 24 ? endTime - 24 : endTime)}
                       onChange={(e) => {
-                        const newEnd = parseTime(e.target.value);
+                        let newEnd = parseTime(e.target.value);
+                        // If end time is before start, interpret as next day (overnight)
+                        if (newEnd < editBlockModal.start) {
+                          newEnd = newEnd + 24; // e.g. 02:00 → 26
+                        }
                         const newDuration = newEnd - editBlockModal.start;
-                        if (newDuration >= 0.5 && newEnd <= 24) {
+                        if (newDuration >= 0.5 && newDuration <= 17) {
                           setEditBlockModal({ ...editBlockModal, duration: Math.round(newDuration * 2) / 2 });
                         }
                       }}
                       className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
+                    {endTime > 24 && (
+                      <p className="text-[10px] text-blue-600 font-bold mt-1">→ Nästa dag kl {formatTime(endTime - 24)}</p>
+                    )}
                   </div>
                   <div className="w-20">
                     <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Längd</label>
@@ -3199,7 +3239,10 @@ Lätt armhävningspåminnelse
                 </button>
                 <button
                   onClick={() => {
-                    const updatedCalendar = calendar.map((b) => {
+                    const endTime = editBlockModal.start + editBlockModal.duration;
+                    const overflowsToNextDay = endTime > 24;
+
+                    let updatedCalendar = calendar.map((b) => {
                       if (b.id !== editBlockModal.blockId) return b;
                       return {
                         ...b,
@@ -3207,12 +3250,36 @@ Lätt armhävningspåminnelse
                         type: editBlockModal.type,
                         status: editBlockModal.status,
                         start: editBlockModal.start,
-                        duration: editBlockModal.duration,
+                        duration: overflowsToNextDay ? (24 - editBlockModal.start) : editBlockModal.duration,
                         description: editBlockModal.description,
                         projectName: editBlockModal.projectName || null,
                         taskName: editBlockModal.taskName || null,
                       };
                     });
+
+                    // Handle overnight overflow — create continuation block on next day
+                    if (overflowsToNextDay) {
+                      const originalBlock = calendar.find(b => b.id === editBlockModal.blockId);
+                      const overflowDuration = endTime - 24;
+                      const nextDay = (originalBlock.day + 1) % 7;
+                      // Remove any existing overflow block from this source
+                      updatedCalendar = updatedCalendar.filter(b => b.overflowFrom !== editBlockModal.blockId);
+                      const overflowBlock = {
+                        id: `overflow-${Date.now()}`,
+                        day: nextDay,
+                        start: 0,
+                        duration: overflowDuration,
+                        type: editBlockModal.type,
+                        label: editBlockModal.label || originalBlock.label,
+                        status: editBlockModal.status,
+                        description: '',
+                        projectName: editBlockModal.projectName || null,
+                        taskName: editBlockModal.taskName || null,
+                        overflowFrom: editBlockModal.blockId,
+                      };
+                      updatedCalendar.push(overflowBlock);
+                    }
+
                     const block = updatedCalendar.find(b => b.id === editBlockModal.blockId);
                     updateCurrentWeek(resolveCollisions(updatedCalendar, block), points);
                     // Update project history
@@ -4093,7 +4160,18 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
   }, [isEditing]);
 
   // Calculate positioning for parallel blocks
-  let positionStyle = { top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` };
+  // Blocks with start < 7 are overflow blocks shown in the compressed late-night zone
+  let positionStyle;
+  if (block.start < 7) {
+    // Late-night overflow: positioned after the regular 18-hour grid (7-24)
+    const regularGridHeight = 18 * HOUR_HEIGHT; // rem for hours 7-24
+    positionStyle = {
+      top: `${regularGridHeight + (block.start * LATE_HOUR_HEIGHT)}rem`,
+      height: `${Math.max(block.duration * LATE_HOUR_HEIGHT - 0.1, LATE_HOUR_HEIGHT * 0.4)}rem`,
+    };
+  } else {
+    positionStyle = { top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` };
+  }
 
   if (isParallel && parallelPosition === 'left') {
     positionStyle.left = '2px';
@@ -4103,20 +4181,8 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
     positionStyle.right = '2px';
   }
 
-  if (isInactive)
-    return (
-      <div
-        onClick={() => onAction('toggle')}
-        className="absolute border-2 border-dashed text-zinc-400 rounded flex items-center justify-center text-[10px] font-bold uppercase cursor-pointer hover:border-zinc-400"
-        style={{
-          ...positionStyle,
-          ...(isParallel ? {} : { left: '4px', right: '4px' }),
-          borderColor: cat?.borderHex || cat?.border || '#d4d4d8',
-        }}
-      >
-        {block.label}
-      </div>
-    );
+  // Inactive blocks are hidden from the calendar view
+  if (isInactive) return null;
 
   return (
     <>
