@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.3] - 2026-03-03
+
+### Fixed
+- **"Totalt" komp-beräkningen helt omarbetad.** Använde felaktigt den visade veckan istället för den riktiga veckan — värdet ändrades beroende på vilken vecka man navigerat till. Nu använder den `getCurrentWeek()` (riktiga veckan) och ger stabilt värde oavsett vilken vecka man tittar på. Innevarande veckas mål pro-ratas baserat på hur många arbetsdagar som gått (mån=1/5, fre=5/5 av veckans mål). Undantagna dagar (excludedDays) dras av från målet. Framtida veckor och veckor utan data räknas inte med.
+
 ## [1.18.2] - 2026-03-03
 
 ### Fixed
