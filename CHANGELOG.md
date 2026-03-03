@@ -5,6 +5,26 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-03-03
+
+### Changed
+- **"Mörkt & Refined" Dark Theme:** Helt ny visuell identitet — appen går från ljus design till ett mörkt, raffinerat tema med glasmorfism-effekter.
+  - **Font:** Inter → Plus Jakarta Sans (Google Fonts, vikt 400–800)
+  - **Bakgrund:** Djup mörkblå (#0c1222) med subtil grain-textur via SVG feTurbulence
+  - **CSS-variabler:** Nytt system med `--surface-base/elevated/card/glass/input`, `--border-subtle/default/strong`, `--text-primary/secondary/muted`
+  - **Header:** Frostat glas-effekt med `backdrop-blur-xl` och halvtransparent bakgrund
+  - **Kalendergrid:** Transparent bakgrund med subtila `border-white/5`-linjer
+  - **Block:** Subtil glow-effekt i kategorifärg (`boxShadow: 0 0 12px 2px`) — done-block utan glow, dämpad opacity
+  - **Done-state-färger:** Ljusa pasteller ersatta med mörka varianter som fungerar mot mörk bakgrund (alla 10 palette-färger + 4 standardkategorier)
+  - **Alla modaler:** Glasmorfism — `bg-[var(--surface-card)]/95 backdrop-blur-xl border-white/10`
+  - **Sidebars:** Mörk bakgrund med konsekventa kort och inputs
+  - **FAB:** Varm glow-effekt runt knappen (`rgba(238,155,0,0.3)`)
+  - **Bank-panel:** Mörk bakgrund istället för vit
+  - **StatPill:** Anpassade färger för mörkt tema (green-400/red-400 istället för 600)
+  - **Scrollbar:** Mörk styling med subtil hover-effekt
+  - **Selection:** Blå markering anpassad för mörkt tema
+- Ingen funktionalitet ändrad — rent visuell uppdatering.
+
 ## [1.19.0] - 2026-03-03
 
 ### Changed
