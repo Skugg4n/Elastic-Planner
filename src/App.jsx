@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.18.1';
+const APP_VERSION = '1.18.2';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -2723,22 +2723,25 @@ Lätt armhävningspåminnelse
                     {HOURS.map((h) => (
                       <div
                         key={h}
-                        className="border-b border-zinc-50 w-full relative group/cell hover:bg-black/5 transition-colors"
+                        className="border-b border-zinc-50 w-full relative"
                         style={{ height: `${HOUR_HEIGHT}rem` }}
                         onDragOver={(e) => handleDragOver(e, dIndex, h)}
                       >
-                        {!calendar.some((b) => b.day === dIndex && b.start <= h && b.start + b.duration > h) && (
-                          <button
-                            onClick={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const isBottom = (e.clientY - rect.top) > rect.height / 2;
-                              setAddModal({ day: dIndex, hour: isBottom ? h + 0.5 : h });
-                            }}
-                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 text-zinc-300 hover:text-zinc-500"
-                          >
-                            <Plus size={16} />
-                          </button>
-                        )}
+                        {[0, 0.5].map((offset) => {
+                          const slotStart = h + offset;
+                          const isOccupied = calendar.some((b) => b.day === dIndex && b.start <= slotStart && b.start + b.duration > slotStart);
+                          if (isOccupied) return <div key={offset} style={{ height: `${HOUR_HEIGHT / 2}rem` }} />;
+                          return (
+                            <button
+                              key={offset}
+                              onClick={() => setAddModal({ day: dIndex, hour: slotStart })}
+                              className="w-full flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/5 text-zinc-300 hover:text-zinc-500 transition-colors"
+                              style={{ height: `${HOUR_HEIGHT / 2}rem` }}
+                            >
+                              <Plus size={16} />
+                            </button>
+                          );
+                        })}
                       </div>
                     ))}
 

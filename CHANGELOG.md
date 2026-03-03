@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.2] - 2026-03-03
+
+### Fixed
+- **Hover-markering matchar nu blockstorlek:** Hover-ytan vid "lägg till block" visade 1h höjd men skapade 0.5h-block. Nu delade i två 0.5h-zoner som var och en visar korrekt storlek och placering.
+
 ## [1.18.1] - 2026-03-02
 
 ### Fixed
