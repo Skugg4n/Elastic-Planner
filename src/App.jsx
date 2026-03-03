@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.20.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -17,16 +17,16 @@ const BANK_KEY = 'elastic-planner-bank';
 
 
 const COLOR_PALETTE = [
-  { id: 'ink-black', hex: '#001219', textHex: '#ffffff', borderHex: '#001219', doneHex: '#e8eaed', doneTextHex: '#5f6368', doneBorderHex: '#dadce0' },
-  { id: 'dark-teal', hex: '#005f73', textHex: '#ffffff', borderHex: '#004d5e', doneHex: '#e0f2f1', doneTextHex: '#005f73', doneBorderHex: '#b2dfdb' },
-  { id: 'dark-cyan', hex: '#0a9396', textHex: '#ffffff', borderHex: '#078385', doneHex: '#e0f7fa', doneTextHex: '#0a9396', doneBorderHex: '#b2ebf2' },
-  { id: 'pearl-aqua', hex: '#94d2bd', textHex: '#001219', borderHex: '#7bc4ad', doneHex: '#f0faf6', doneTextHex: '#5a9e87', doneBorderHex: '#c8e6d8' },
-  { id: 'vanilla', hex: '#e9d8a6', textHex: '#001219', borderHex: '#d4c48e', doneHex: '#fdf8e8', doneTextHex: '#8a7a3a', doneBorderHex: '#e9d8a6' },
-  { id: 'golden-orange', hex: '#ee9b00', textHex: '#001219', borderHex: '#d68a00', doneHex: '#fff8e1', doneTextHex: '#b87700', doneBorderHex: '#ffe0b2' },
-  { id: 'burnt-caramel', hex: '#ca6702', textHex: '#ffffff', borderHex: '#a85500', doneHex: '#fff3e0', doneTextHex: '#ca6702', doneBorderHex: '#ffcc80' },
-  { id: 'rusty-spice', hex: '#bb3e03', textHex: '#ffffff', borderHex: '#9a3300', doneHex: '#fbe9e7', doneTextHex: '#bb3e03', doneBorderHex: '#ffab91' },
-  { id: 'oxidized-iron', hex: '#ae2012', textHex: '#ffffff', borderHex: '#8e1a0e', doneHex: '#ffebee', doneTextHex: '#ae2012', doneBorderHex: '#ef9a9a' },
-  { id: 'brown-red', hex: '#9b2226', textHex: '#ffffff', borderHex: '#7d1b1f', doneHex: '#fce4ec', doneTextHex: '#9b2226', doneBorderHex: '#ef9a9a' },
+  { id: 'ink-black', hex: '#001219', textHex: '#ffffff', borderHex: '#001219', doneHex: '#1a2235', doneTextHex: '#64748b', doneBorderHex: '#2a3548' },
+  { id: 'dark-teal', hex: '#005f73', textHex: '#ffffff', borderHex: '#004d5e', doneHex: '#0d2a2f', doneTextHex: '#4db6ac', doneBorderHex: '#1a3f45' },
+  { id: 'dark-cyan', hex: '#0a9396', textHex: '#ffffff', borderHex: '#078385', doneHex: '#0d2e30', doneTextHex: '#4dd0e1', doneBorderHex: '#1a4245' },
+  { id: 'pearl-aqua', hex: '#94d2bd', textHex: '#001219', borderHex: '#7bc4ad', doneHex: '#142e26', doneTextHex: '#6daa95', doneBorderHex: '#1e4035' },
+  { id: 'vanilla', hex: '#e9d8a6', textHex: '#001219', borderHex: '#d4c48e', doneHex: '#2a2618', doneTextHex: '#b8a76e', doneBorderHex: '#3d3522' },
+  { id: 'golden-orange', hex: '#ee9b00', textHex: '#001219', borderHex: '#d68a00', doneHex: '#2e2210', doneTextHex: '#d4940a', doneBorderHex: '#42311a' },
+  { id: 'burnt-caramel', hex: '#ca6702', textHex: '#ffffff', borderHex: '#a85500', doneHex: '#2e1e0e', doneTextHex: '#e09040', doneBorderHex: '#422c18' },
+  { id: 'rusty-spice', hex: '#bb3e03', textHex: '#ffffff', borderHex: '#9a3300', doneHex: '#2e150d', doneTextHex: '#e07040', doneBorderHex: '#42201a' },
+  { id: 'oxidized-iron', hex: '#ae2012', textHex: '#ffffff', borderHex: '#8e1a0e', doneHex: '#2e120f', doneTextHex: '#e06050', doneBorderHex: '#421a18' },
+  { id: 'brown-red', hex: '#9b2226', textHex: '#ffffff', borderHex: '#7d1b1f', doneHex: '#2e1215', doneTextHex: '#e05060', doneBorderHex: '#42181e' },
 ];
 
 const ICON_OPTIONS = ['Briefcase', 'PenTool', 'Zap', 'Coffee', 'Star', 'Heart', 'Music', 'Book', 'Code', 'Dumbbell', 'Bike', 'Palette'];
@@ -38,9 +38,9 @@ const DEFAULT_CATEGORIES = {
     hex: '#001219',
     textHex: '#ffffff',
     borderHex: '#001219',
-    doneHex: '#e8eaed',
-    doneTextHex: '#5f6368',
-    doneBorderHex: '#dadce0',
+    doneHex: '#1a2235',
+    doneTextHex: '#64748b',
+    doneBorderHex: '#2a3548',
     icon: 'PenTool',
     targetHoursPerWeek: null,
     weeklyGoalPoints: null,
@@ -51,9 +51,9 @@ const DEFAULT_CATEGORIES = {
     hex: '#005f73',
     textHex: '#ffffff',
     borderHex: '#004d5e',
-    doneHex: '#e0f2f1',
-    doneTextHex: '#005f73',
-    doneBorderHex: '#b2dfdb',
+    doneHex: '#0d2a2f',
+    doneTextHex: '#4db6ac',
+    doneBorderHex: '#1a3f45',
     icon: 'Briefcase',
     targetHoursPerWeek: 24,
     weeklyGoalPoints: null,
@@ -64,9 +64,9 @@ const DEFAULT_CATEGORIES = {
     hex: '#ae2012',
     textHex: '#ffffff',
     borderHex: '#8e1a0e',
-    doneHex: '#ffebee',
-    doneTextHex: '#ae2012',
-    doneBorderHex: '#ef9a9a',
+    doneHex: '#2e120f',
+    doneTextHex: '#e06050',
+    doneBorderHex: '#421a18',
     icon: 'Zap',
     targetHoursPerWeek: null,
     weeklyGoalPoints: 10,
@@ -77,9 +77,9 @@ const DEFAULT_CATEGORIES = {
     hex: '#0a9396',
     textHex: '#ffffff',
     borderHex: '#078385',
-    doneHex: '#e0f7fa',
-    doneTextHex: '#0a9396',
-    doneBorderHex: '#b2ebf2',
+    doneHex: '#0d2e30',
+    doneTextHex: '#4dd0e1',
+    doneBorderHex: '#1a4245',
     icon: 'Coffee',
     targetHoursPerWeek: null,
     weeklyGoalPoints: null,
@@ -812,11 +812,11 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
   };
 
   return (
-    <div className="project-task-input bg-white p-4 rounded-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+    <div className="project-task-input bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 p-4 rounded-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
       {/* Recent Combinations */}
       {recentCombos.length > 0 && (
         <div className="mb-4">
-          <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Senaste 10</h4>
+          <h4 className="text-xs font-bold uppercase text-slate-500 mb-2">Senaste 10</h4>
           <div className="flex flex-wrap gap-2">
             {recentCombos.map((combo, idx) => (
               <button
@@ -826,7 +826,7 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
                   setTaskName(combo.taskName);
                   taskInputRef.current?.focus();
                 }}
-                className="text-xs bg-zinc-100 hover:bg-zinc-200 px-2 py-1 rounded transition-colors"
+                className="text-xs bg-white/5 hover:bg-white/10 text-slate-300 px-2 py-1 rounded transition-colors"
               >
                 {combo.projectName} / {combo.taskName}
               </button>
@@ -837,7 +837,7 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
 
       {/* Project Name Input */}
       <div className="relative mb-3">
-        <label className="block text-xs font-bold text-zinc-600 mb-1">Projekt</label>
+        <label className="block text-xs font-bold text-slate-400 mb-1">Projekt</label>
         <input
           ref={projectInputRef}
           type="text"
@@ -849,10 +849,10 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
           onFocus={() => setShowProjectDropdown(true)}
           onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
           placeholder="t.ex. Tivoli 2"
-          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+          className="w-full bg-[var(--surface-input)] border border-white/10 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
         />
         {showProjectDropdown && projectSuggestions.length > 0 && projectName && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+          <div className="absolute z-50 w-full mt-1 bg-[var(--surface-card)] border border-white/10 rounded shadow-lg max-h-40 overflow-y-auto">
             {projectSuggestions.map((proj, idx) => (
               <button
                 key={idx}
@@ -861,10 +861,10 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
                   setShowProjectDropdown(false);
                   taskInputRef.current?.focus();
                 }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex justify-between items-center"
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-white/5 flex justify-between items-center"
               >
                 <span>{proj.name}</span>
-                <span className="text-xs text-zinc-400">({proj.usageCount})</span>
+                <span className="text-xs text-slate-500">({proj.usageCount})</span>
               </button>
             ))}
           </div>
@@ -873,7 +873,7 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
 
       {/* Task Name Input */}
       <div className="relative mb-4">
-        <label className="block text-xs font-bold text-zinc-600 mb-1">Uppgift</label>
+        <label className="block text-xs font-bold text-slate-400 mb-1">Uppgift</label>
         <input
           ref={taskInputRef}
           type="text"
@@ -891,10 +891,10 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
             }
           }}
           placeholder="t.ex. Skiss"
-          className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+          className="w-full bg-[var(--surface-input)] border border-white/10 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
         />
         {showTaskDropdown && taskSuggestions.length > 0 && taskName && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+          <div className="absolute z-50 w-full mt-1 bg-[var(--surface-card)] border border-white/10 rounded shadow-lg max-h-40 overflow-y-auto">
             {taskSuggestions.map((task, idx) => (
               <button
                 key={idx}
@@ -902,7 +902,7 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
                   setTaskName(task);
                   setShowTaskDropdown(false);
                 }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50"
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-white/5"
               >
                 {task}
               </button>
@@ -915,13 +915,13 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
-          className="px-4 py-2 text-sm font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
+          className="px-4 py-2 text-sm font-bold text-slate-400 hover:text-slate-200 transition-colors"
         >
           Avbryt
         </button>
         <button
           onClick={handleSave}
-          className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+          className="bg-white text-[var(--surface-base)] px-4 py-2 rounded text-sm font-bold hover:bg-slate-200 transition-colors"
         >
           Spara
         </button>
@@ -973,7 +973,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
 
       {/* Report Sidebar - Modernized */}
       <div
-        className={`report-sidebar fixed top-0 left-0 h-full w-full sm:w-[420px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`report-sidebar fixed top-0 left-0 h-full w-full sm:w-[420px] bg-[var(--surface-base)] shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -981,18 +981,18 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
         <div className="flex-none bg-zinc-900 p-5 border-b border-zinc-800 flex items-center gap-3">
           <AlertCircle className="text-white" size={20} />
           <h3 className="text-lg font-bold text-white tracking-tight flex-grow">Projektrapport</h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
         {/* Filters - Compact */}
-        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+        <div className="flex-none p-4 border-b border-white/10 bg-[var(--surface-card)]">
           <div className="grid grid-cols-2 gap-2 mb-3">
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              className="bg-[var(--surface-input)] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
             >
               <option value="">Alla kategorier</option>
               {Object.values(categories).map((cat) => (
@@ -1005,7 +1005,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
             <select
               value={filterProject}
               onChange={(e) => setFilterProject(e.target.value)}
-              className="bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              className="bg-[var(--surface-input)] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
             >
               <option value="">Alla projekt</option>
               {reportData.allProjects.map((proj) => (
@@ -1019,7 +1019,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
           <select
             value={filterTask}
             onChange={(e) => setFilterTask(e.target.value)}
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900 mb-3"
+            className="w-full bg-[var(--surface-input)] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 mb-3"
           >
             <option value="">Alla uppgifter</option>
             {reportData.allTasks.map((task) => (
@@ -1032,7 +1032,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
           <select
             value={invoiceFilter}
             onChange={(e) => setInvoiceFilter(e.target.value)}
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900 mb-3"
+            className="w-full bg-[var(--surface-input)] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 mb-3"
           >
             <option value="all">Alla | Fakturerad status</option>
             <option value="not-invoiced">Ej fakturerade</option>
@@ -1045,16 +1045,16 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
               min="1"
               value={weekStart}
               onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
-              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              className="flex-1 bg-[var(--surface-input)] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
               placeholder="v"
             />
-            <span className="text-zinc-400 text-xs">→</span>
+            <span className="text-slate-500 text-xs">→</span>
             <input
               type="number"
               min="1"
               value={weekEnd}
               onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
-              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              className="flex-1 bg-[var(--surface-input)] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
               placeholder="v"
             />
           </div>
@@ -1064,7 +1064,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
                 setWeekStart(currentWeekIndex);
                 setWeekEnd(currentWeekIndex);
               }}
-              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+              className="text-[10px] text-slate-400 hover:text-slate-200 font-medium"
             >
               Nu
             </button>
@@ -1073,7 +1073,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
                 setWeekStart(Math.max(1, currentWeekIndex - 3));
                 setWeekEnd(currentWeekIndex);
               }}
-              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+              className="text-[10px] text-slate-400 hover:text-slate-200 font-medium"
             >
               4v
             </button>
@@ -1082,7 +1082,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
                 setWeekStart(Math.max(1, currentWeekIndex - 11));
                 setWeekEnd(currentWeekIndex);
               }}
-              className="text-[10px] text-zinc-600 hover:text-zinc-900 font-medium"
+              className="text-[10px] text-slate-400 hover:text-slate-200 font-medium"
             >
               12v
             </button>
@@ -1090,19 +1090,19 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
         </div>
 
         {/* Stats - Large Numbers */}
-        <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+        <div className="flex-none p-4 border-b border-white/10 bg-[var(--surface-card)]">
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="bg-zinc-900 p-3 rounded-lg text-center">
-              <div className="text-2xl font-black text-white">{reportData.totalHours}<span className="text-sm font-normal">h</span></div>
-              <div className="text-[10px] text-zinc-400 uppercase mt-1">Timmar</div>
+            <div className="bg-[var(--surface-elevated)] p-3 rounded-lg text-center border border-white/5">
+              <div className="text-2xl font-black text-slate-100">{reportData.totalHours}<span className="text-sm font-normal">h</span></div>
+              <div className="text-[10px] text-slate-500 uppercase mt-1">Timmar</div>
             </div>
-            <div className="bg-zinc-900 p-3 rounded-lg text-center">
-              <div className="text-2xl font-black text-white">{reportData.totalPoints}</div>
-              <div className="text-[10px] text-zinc-400 uppercase mt-1">Aktiviteter</div>
+            <div className="bg-[var(--surface-elevated)] p-3 rounded-lg text-center border border-white/5">
+              <div className="text-2xl font-black text-slate-100">{reportData.totalPoints}</div>
+              <div className="text-[10px] text-slate-500 uppercase mt-1">Aktiviteter</div>
             </div>
-            <div className="bg-zinc-900 p-3 rounded-lg text-center">
-              <div className="text-2xl font-black text-white">{reportData.byProject.length}</div>
-              <div className="text-[10px] text-zinc-400 uppercase mt-1">Projekt</div>
+            <div className="bg-[var(--surface-elevated)] p-3 rounded-lg text-center border border-white/5">
+              <div className="text-2xl font-black text-slate-100">{reportData.byProject.length}</div>
+              <div className="text-[10px] text-slate-500 uppercase mt-1">Projekt</div>
             </div>
           </div>
 
@@ -1122,7 +1122,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
             const invoicedHours = filteredBlocks.filter(b => b.invoiced).reduce((a, b) => a + b.duration, 0);
             const remainingHours = filteredBlocks.filter(b => !b.invoiced).reduce((a, b) => a + b.duration, 0);
             return (
-              <div className="text-xs text-zinc-600 space-y-1 pt-2 border-t border-zinc-200">
+              <div className="text-xs text-slate-400 space-y-1 pt-2 border-t border-white/10">
                 <div className="flex justify-between">
                   <span>Fakturerat:</span>
                   <span className="font-bold">{Math.round(invoicedHours * 10) / 10}h</span>
@@ -1141,18 +1141,18 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
           {reportData.byProject.length > 0 ? (
             <div className="space-y-3">
               {reportData.byProject.map((proj) => (
-                <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="font-bold text-zinc-900 mb-2">{proj.name}</div>
-                  <div className="flex gap-4 text-xs text-zinc-600 mb-3">
+                <div key={proj.name} className="bg-[var(--surface-card)] border border-white/10 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="font-bold text-slate-200 mb-2">{proj.name}</div>
+                  <div className="flex gap-4 text-xs text-slate-400 mb-3">
                     <span className="font-bold">{proj.hours}h</span>
                     <span>{proj.pointCount} aktiviteter</span>
                   </div>
                   {proj.tasks.length > 0 && (
-                    <div className="space-y-2 pt-3 border-t border-zinc-100">
+                    <div className="space-y-2 pt-3 border-t border-white/10">
                       {proj.tasks.map((task) => (
                         <div key={task.name} className="flex justify-between items-center text-xs">
-                          <span className="font-medium text-zinc-700">{task.name}</span>
-                          <span className="text-zinc-500">{task.hours}h · {task.pointCount}</span>
+                          <span className="font-medium text-slate-300">{task.name}</span>
+                          <span className="text-slate-500">{task.hours}h · {task.pointCount}</span>
                         </div>
                       ))}
                     </div>
@@ -1161,14 +1161,14 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
               ))}
             </div>
           ) : (
-            <div className="text-center text-zinc-400 italic py-12 text-sm">
+            <div className="text-center text-slate-500 italic py-12 text-sm">
               Inga projekt för vald period
             </div>
           )}
         </div>
 
         {/* Footer - Export & Invoice Actions */}
-        <div className="flex-none p-4 border-t border-zinc-200 bg-white space-y-2">
+        <div className="flex-none p-4 border-t border-white/10 bg-[var(--surface-card)] space-y-2">
           {invoiceFilter === 'not-invoiced' && (() => {
             const allBlocks = Object.values(weeksData)
               .filter((wd, i) => (i + 1) >= weekStart && (i + 1) <= weekEnd)
@@ -1194,7 +1194,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
           })()}
           <button
             onClick={handleExport}
-            className="w-full bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
+            className="w-full bg-white text-[var(--surface-base)] px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 shadow-sm"
           >
             <Save size={16} />
             Exportera rapport (JSON)
@@ -2454,25 +2454,25 @@ Lätt armhävningspåminnelse
   });
 
   return (
-    <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
-      <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-50">
+    <div className="h-screen bg-[var(--surface-base)] font-sans text-[var(--text-primary)] select-none flex flex-col overflow-hidden">
+      <header className="bg-[var(--surface-glass)] backdrop-blur-xl border-b border-white/5 shadow-lg shadow-black/20 flex-none z-50">
         <div className="px-4 py-2 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <span className="text-[10px] font-bold uppercase text-zinc-500 bg-zinc-100 border border-zinc-200 rounded-full px-2 py-1">
+            <span className="text-[10px] font-bold uppercase text-slate-400 bg-white/5 border border-white/10 rounded-full px-2 py-1">
               v{APP_VERSION}
             </span>
-            <div className="flex items-center bg-zinc-100 rounded-lg p-1">
+            <div className="flex items-center bg-white/5 rounded-lg p-1">
               <button
                 onClick={() => setCurrentWeekIndex(Math.max(1, currentWeekIndex - 1))}
-                className="hover:bg-white rounded p-1"
+                className="hover:bg-white/10 rounded p-1 text-slate-300"
                 aria-label="Föregående vecka"
               >
                 <ChevronLeft size={16} />
               </button>
-              <span className="text-sm font-bold w-20 text-center">V.{currentWeekIndex}</span>
+              <span className="text-sm font-bold w-20 text-center text-slate-200">V.{currentWeekIndex}</span>
               <button
                 onClick={() => setCurrentWeekIndex(currentWeekIndex + 1)}
-                className="hover:bg-white rounded p-1"
+                className="hover:bg-white/10 rounded p-1 text-slate-300"
                 aria-label="Nästa vecka"
               >
                 <ChevronRight size={16} />
@@ -2480,30 +2480,30 @@ Lätt armhävningspåminnelse
             </div>
             <button
               onClick={() => setCurrentWeekIndex(getCurrentWeek())}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 px-3 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+              className="text-xs font-bold text-blue-400 hover:text-blue-300 px-3 py-1 bg-blue-400/10 hover:bg-blue-400/20 rounded-lg transition-colors"
               aria-label="Hoppa till idag"
             >
               Idag
             </button>
             <button
               onClick={() => setReportSidebarOpen(true)}
-              className="text-xs font-bold text-zinc-600 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
+              className="text-xs font-bold text-slate-400 hover:text-slate-200 px-3 py-1 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
               aria-label="Öppna projektrapport"
             >
               📊 Rapport
             </button>
             <button
               onClick={() => setSettingsOpen(true)}
-              className="text-xs font-bold text-zinc-600 hover:text-zinc-900 p-1.5 hover:bg-zinc-100 rounded-lg transition-colors"
+              className="text-xs font-bold text-slate-400 hover:text-slate-200 p-1.5 hover:bg-white/5 rounded-lg transition-colors"
               aria-label="Inställningar"
             >
               <Settings size={16} />
             </button>
-            <div className="h-6 w-px bg-zinc-200" />
+            <div className="h-6 w-px bg-white/10" />
             <div className="flex gap-1 items-center">
               <button
                 onClick={handleUndo}
-                className={`p-1.5 rounded transition-colors ${undoStack.current.length > 0 ? 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900' : 'text-zinc-300 cursor-default'}`}
+                className={`p-1.5 rounded transition-colors ${undoStack.current.length > 0 ? 'text-slate-400 hover:bg-white/5 hover:text-slate-200' : 'text-slate-600 cursor-default'}`}
                 title="Ångra (Ctrl+Z)"
                 disabled={undoStack.current.length === 0}
               >
@@ -2511,16 +2511,16 @@ Lätt armhävningspåminnelse
               </button>
               <button
                 onClick={handleRedo}
-                className={`p-1.5 rounded transition-colors ${redoStack.current.length > 0 ? 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900' : 'text-zinc-300 cursor-default'}`}
+                className={`p-1.5 rounded transition-colors ${redoStack.current.length > 0 ? 'text-slate-400 hover:bg-white/5 hover:text-slate-200' : 'text-slate-600 cursor-default'}`}
                 title="Gör om (Ctrl+Shift+Z)"
                 disabled={redoStack.current.length === 0}
               >
                 <RotateCw size={14} />
               </button>
-              <div className="w-px h-4 bg-zinc-200 mx-1" />
+              <div className="w-px h-4 bg-white/10 mx-1" />
               <button
                 onClick={() => setImportModalOpen(true)}
-                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-900 px-2 py-1 hover:bg-blue-50 rounded"
+                className="flex items-center gap-1 text-xs font-bold text-blue-400 hover:text-blue-300 px-2 py-1 hover:bg-blue-400/10 rounded"
               >
                 📥 Import
               </button>
@@ -2535,11 +2535,11 @@ Lätt armhävningspåminnelse
             })}
             {totalWeekPoints > 0 && (
               <div className="flex flex-col items-end">
-                <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+                <span className="text-[10px] font-bold uppercase text-slate-500 flex items-center gap-1">
                   Punkter
                 </span>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-black tracking-tighter text-yellow-600">{totalWeekPoints}</span>
+                  <span className="text-lg font-black tracking-tighter text-yellow-500">{totalWeekPoints}</span>
                   <div className="flex gap-1 text-[9px]">
                     {Object.values(categories).map(cat => {
                       const count = weekPoints.filter(p => p.categoryId === cat.id).length;
@@ -2562,10 +2562,10 @@ Lätt armhävningspåminnelse
                     {goal.isGoalMet && <span className="text-lg">🏆</span>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-lg font-black text-red-600">{goal.currentPoints}</span>
-                    <span className="text-[10px] text-zinc-400">/ {goal.goalPoints}p</span>
+                    <span className="text-lg font-black text-red-500">{goal.currentPoints}</span>
+                    <span className="text-[10px] text-slate-500">/ {goal.goalPoints}p</span>
                   </div>
-                  <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-0.5">
+                  <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden mt-0.5">
                     <div className="h-full bg-red-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
                   </div>
                 </div>
@@ -2577,13 +2577,13 @@ Lätt armhävningspåminnelse
 
       <div className="flex-grow flex flex-col overflow-hidden relative">
         <div className="flex-grow overflow-auto p-2">
-          <div className="grid grid-cols-8 gap-0 min-w-[960px] border-l border-zinc-200 bg-white">
-            <div className="col-span-1 border-r border-zinc-200 bg-white sticky left-0 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
-              <div className="h-10 border-b border-zinc-100 bg-zinc-50" />
+          <div className="grid grid-cols-8 gap-0 min-w-[960px] border-l border-white/5 bg-transparent">
+            <div className="col-span-1 border-r border-white/5 bg-[var(--surface-base)] sticky left-0 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.3)]">
+              <div className="h-10 border-b border-white/5 bg-[var(--surface-elevated)]" />
               {HOURS.map((h) => (
                 <div
                   key={h}
-                  className="border-b border-zinc-50 text-[10px] font-medium text-zinc-400 pr-2 pt-1 text-right"
+                  className="border-b border-white/5 text-[10px] font-medium text-slate-600 pr-2 pt-1 text-right"
                   style={{ height: `${HOUR_HEIGHT}rem` }}
                 >
                   {h}:00
@@ -2598,8 +2598,8 @@ Lätt armhävningspåminnelse
                 return lateHoursToShow.map(h => (
                   <div
                     key={`late-label-${h}`}
-                    className="border-b border-zinc-100/50 text-[8px] font-medium text-zinc-300 pr-2 pt-0.5 text-right"
-                    style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                    className="border-b border-white/5 text-[8px] font-medium text-slate-600 pr-2 pt-0.5 text-right"
+                    style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(255,255,255,0.02)' }}
                   >
                     {h}:00
                   </div>
@@ -2637,10 +2637,10 @@ Lätt armhävningspåminnelse
               return (
                 <div
                   key={dIndex}
-                  className={`col-span-1 relative border-r border-zinc-100 group ${isToday ? 'bg-blue-50/30' : ''}`}
+                  className={`col-span-1 relative border-r border-white/5 group ${isToday ? 'bg-blue-500/5' : ''}`}
                 >
                   <div
-                    className={`h-10 flex flex-col items-center justify-center border-b border-zinc-200 sticky top-0 z-20 ${isSuperDay ? 'bg-yellow-100 text-yellow-900 border-yellow-300' : isToday ? 'bg-blue-100/80 text-blue-900' : 'bg-zinc-50 text-zinc-500'} transition-colors duration-500`}
+                    className={`h-10 flex flex-col items-center justify-center border-b border-white/5 sticky top-0 z-20 ${isSuperDay ? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/20' : isToday ? 'bg-blue-500/10 text-blue-300' : 'bg-[var(--surface-elevated)] text-slate-400'} transition-colors duration-500`}
                   >
                     <div className="flex items-center justify-between w-full px-2">
                       <div className="flex items-center gap-1">
@@ -2667,13 +2667,13 @@ Lätt armhävningspåminnelse
                         <div className="relative">
                           <button
                             onClick={() => setTemplateDropdownDay(templateDropdownDay === dIndex ? null : dIndex)}
-                            className="p-0.5 rounded transition-all hover:scale-110 text-zinc-400 hover:text-zinc-600"
+                            className="p-0.5 rounded transition-all hover:scale-110 text-slate-500 hover:text-slate-300"
                             title="Mallar"
                           >
                             <FileText size={14} />
                           </button>
                           {templateDropdownDay === dIndex && (
-                            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl p-2 w-48 z-[100] border border-zinc-200">
+                            <div className="absolute right-0 top-full mt-1 bg-[var(--surface-card)] rounded-lg shadow-xl p-2 w-48 z-[100] border border-white/10">
                               <div className="flex flex-col gap-1">
                                 <button
                                   onClick={() => {
@@ -2683,7 +2683,7 @@ Lätt armhävningspåminnelse
                                       setTemplateDropdownDay(null);
                                     }
                                   }}
-                                  className="text-left px-2 py-1.5 hover:bg-zinc-50 rounded text-xs font-bold text-zinc-700"
+                                  className="text-left px-2 py-1.5 hover:bg-white/5 rounded text-xs font-bold text-slate-300"
                                 >
                                   + Spara som mall
                                 </button>
@@ -2691,20 +2691,20 @@ Lätt armhävningspåminnelse
                                   onClick={() => {
                                     saveAsDefaultTemplate(dIndex);
                                   }}
-                                  className="text-left px-2 py-1.5 hover:bg-amber-50 rounded text-xs font-bold text-amber-700"
+                                  className="text-left px-2 py-1.5 hover:bg-amber-500/10 rounded text-xs font-bold text-amber-400"
                                   title="Kommer att tillämpas på alla nya veckor"
                                 >
                                   🗂️ Ställ in som veckomall
                                 </button>
-                                <div className="border-t border-zinc-100 my-1" />
+                                <div className="border-t border-white/10 my-1" />
                                 {Object.keys(listTemplates()).length === 0 ? (
-                                  <div className="text-xs text-zinc-400 italic px-2 py-1">Inga mallar</div>
+                                  <div className="text-xs text-slate-500 italic px-2 py-1">Inga mallar</div>
                                 ) : (
                                   Object.values(listTemplates()).map((template) => (
                                     <div key={template.name} className="flex items-center justify-between group/template">
                                       <button
                                         onClick={() => applyTemplate(template.name, dIndex)}
-                                        className="flex-grow text-left px-2 py-1.5 hover:bg-blue-50 rounded text-xs font-bold text-zinc-700"
+                                        className="flex-grow text-left px-2 py-1.5 hover:bg-blue-400/10 rounded text-xs font-bold text-slate-300"
                                       >
                                         {template.name}
                                       </button>
@@ -2733,7 +2733,7 @@ Lätt armhävningspåminnelse
                             setLogSidebarOpen(true);
                           }}
                           className={`p-0.5 rounded transition-all hover:scale-110 ${
-                            pointCount > 0 ? 'text-yellow-500 font-bold' : 'text-zinc-300 hover:text-zinc-500'
+                            pointCount > 0 ? 'text-yellow-500 font-bold' : 'text-slate-600 hover:text-slate-400'
                           }`}
                           aria-label="Öppna punkter"
                         >
@@ -2757,7 +2757,7 @@ Lätt armhävningspåminnelse
                     {HOURS.map((h) => (
                       <div
                         key={h}
-                        className="border-b border-zinc-50 w-full relative"
+                        className="border-b border-white/5 w-full relative"
                         style={{ height: `${HOUR_HEIGHT}rem` }}
                         onDragOver={(e) => handleDragOver(e, dIndex, h)}
                       >
@@ -2769,7 +2769,7 @@ Lätt armhävningspåminnelse
                             <button
                               key={offset}
                               onClick={() => setAddModal({ day: dIndex, hour: slotStart })}
-                              className="w-full flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/5 text-zinc-300 hover:text-zinc-500 transition-colors"
+                              className="w-full flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-white/5 text-slate-600 hover:text-slate-400 transition-colors"
                               style={{ height: `${HOUR_HEIGHT / 2}rem` }}
                             >
                               <Plus size={16} />
@@ -2788,8 +2788,8 @@ Lätt armhävningspåminnelse
                       return lateHoursToShow.map(h => (
                         <div
                           key={`late-${h}`}
-                          className="border-b border-zinc-100/50 w-full relative"
-                          style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                          className="border-b border-white/5 w-full relative"
+                          style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(255,255,255,0.02)' }}
                         />
                       ));
                     })()}
@@ -2920,7 +2920,7 @@ Lätt armhävningspåminnelse
                             setLogSidebarOpen(true);
                           }}
                         >
-                          <div className={`bg-white rounded-full p-0.5 shadow-md border relative ${category.borderColor} ${isPlanned ? 'border-dashed' : ''}`}>
+                          <div className={`bg-[var(--surface-card)] rounded-full p-0.5 shadow-md border relative ${category.borderColor} ${isPlanned ? 'border-dashed' : ''}`}>
                             <div className={category.iconColor}>{getCategoryIcon(group.categoryId, 14, categories)}</div>
                             {group.count > 1 && (
                               <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white">
@@ -2931,7 +2931,7 @@ Lätt armhävningspåminnelse
                           <div className="absolute right-full top-0 mr-2 bg-black/90 text-white text-[10px] p-2 rounded w-max opacity-0 group-hover/icon:opacity-100 pointer-events-none z-[70] shadow-xl">
                             <ul className="list-disc pl-3">
                               {group.items.map((item, idx) => (
-                                <li key={idx} className={item.status === 'planned' ? 'text-zinc-400' : ''}>
+                                <li key={idx} className={item.status === 'planned' ? 'text-slate-500' : ''}>
                                   {item.status === 'planned' ? '○ ' : '● '}{item.text}
                                 </li>
                               ))}
@@ -2969,7 +2969,7 @@ Lätt armhävningspåminnelse
         <div className="add-modal fixed inset-0 bg-black/10 z-[100]" onClick={() => setAddModal(null)}>
           {!addModal.selectedCategory ? (
             <div
-              className="absolute bg-white p-2 rounded-lg shadow-xl border border-zinc-200"
+              className="absolute bg-[var(--surface-card)]/95 backdrop-blur-xl p-2 rounded-lg shadow-xl border border-white/10"
               style={{
                 left: `${85 + (addModal.day * 150)}px`,
                 top: `${150 + ((addModal.hour - 7) * HOUR_HEIGHT * 16)}px`
@@ -3010,10 +3010,10 @@ Lätt armhävningspåminnelse
 
       {noteModal && (
         <div className="note-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setNoteModal(null)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-zinc-50 p-3 border-b border-zinc-100 flex justify-between items-center">
-              <h3 className="text-sm font-bold uppercase text-zinc-500">Anteckningar</h3>
-              <button onClick={() => setNoteModal(null)} className="text-zinc-400 hover:text-zinc-900">
+          <div className="bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[var(--surface-elevated)] p-3 border-b border-white/10 flex justify-between items-center">
+              <h3 className="text-sm font-bold uppercase text-slate-400">Anteckningar</h3>
+              <button onClick={() => setNoteModal(null)} className="text-slate-500 hover:text-slate-200">
                 <X size={16} />
               </button>
             </div>
@@ -3035,16 +3035,16 @@ Lätt armhävningspåminnelse
                                   const newText = toggleCheckbox(noteModal.text, idx);
                                   setNoteModal({ ...noteModal, text: newText });
                                 }}
-                                className="mt-0.5 w-4 h-4 rounded border-zinc-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                                className="mt-0.5 w-4 h-4 rounded border-white/20 text-blue-500 focus:ring-2 focus:ring-blue-500 bg-transparent"
                               />
-                              <span className={`text-sm ${line.checked ? 'line-through text-zinc-400' : 'text-zinc-800'}`}>
+                              <span className={`text-sm ${line.checked ? 'line-through text-slate-500' : 'text-slate-200'}`}>
                                 {line.text}
                               </span>
                             </label>
                           );
                         } else if (line.text.trim()) {
                           return (
-                            <div key={idx} className="text-sm text-zinc-800 font-medium">
+                            <div key={idx} className="text-sm text-slate-200 font-medium">
                               {line.text}
                             </div>
                           );
@@ -3058,7 +3058,7 @@ Lätt armhävningspåminnelse
                 return (
                   <textarea
                     autoFocus
-                    className="w-full h-32 p-3 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-800 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none focus:bg-white"
+                    className="w-full h-32 p-3 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     placeholder="Vad ska göras? Hur gick det?&#10;&#10;Använd checkboxes:&#10;- [ ] Uppgift 1&#10;- [ ] Uppgift 2"
                     value={noteModal.text}
                     onChange={(e) => setNoteModal({ ...noteModal, text: e.target.value })}
@@ -3066,7 +3066,7 @@ Lätt armhävningspåminnelse
                 );
               })()}
             </div>
-            <div className="p-3 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
+            <div className="p-3 bg-[var(--surface-elevated)] border-t border-white/10 flex justify-end gap-2">
               <button
                 onClick={() => {
                   // Switch between checkbox view and edit view
@@ -3076,13 +3076,13 @@ Lätt armhävningspåminnelse
                     setNoteModal({ ...noteModal, editMode: !noteModal.editMode });
                   }
                 }}
-                className="text-zinc-600 text-xs hover:text-zinc-900"
+                className="text-slate-400 text-xs hover:text-slate-200"
               >
                 {parseCheckboxes(noteModal.text).hasCheckboxes ? '✏️ Redigera' : ''}
               </button>
               <button
                 onClick={() => updateDescription(noteModal.blockId, noteModal.text)}
-                className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+                className="bg-white text-[var(--surface-base)] px-4 py-2 rounded text-sm font-bold hover:bg-slate-200 transition-colors"
               >
                 Spara
               </button>
@@ -3105,28 +3105,28 @@ Lätt armhävningspåminnelse
         const endTime = editBlockModal.start + editBlockModal.duration;
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setEditBlockModal(null)}>
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-4 flex justify-between items-center" style={{ backgroundColor: '#001219' }}>
-                <h3 className="text-sm font-bold uppercase text-white flex items-center gap-2"><Edit3 size={14} /> Redigera block</h3>
-                <button onClick={() => setEditBlockModal(null)} className="text-zinc-400 hover:text-white"><X size={16} /></button>
+            <div className="bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 flex justify-between items-center bg-[var(--surface-elevated)] border-b border-white/10">
+                <h3 className="text-sm font-bold uppercase text-slate-200 flex items-center gap-2"><Edit3 size={14} /> Redigera block</h3>
+                <button onClick={() => setEditBlockModal(null)} className="text-slate-500 hover:text-slate-200"><X size={16} /></button>
               </div>
               <div className="p-4 space-y-4">
                 {/* Name */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Namn</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Namn</label>
                   <input
                     type="text"
                     autoFocus
                     value={editBlockModal.label}
                     onChange={(e) => setEditBlockModal({ ...editBlockModal, label: e.target.value })}
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     placeholder="Blocknamn"
                   />
                 </div>
 
                 {/* Category */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Kategori</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kategori</label>
                   <div className="flex flex-wrap gap-2">
                     {Object.entries(categories).map(([id, cat]) => (
                       <button
@@ -3138,8 +3138,8 @@ Lätt armhävningspåminnelse
                         } : undefined}
                         className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
                           editBlockModal.type === id
-                            ? 'ring-2 ring-offset-1 ring-black'
-                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                            ? 'ring-2 ring-offset-1 ring-white/50 ring-offset-[var(--surface-card)]'
+                            : 'bg-white/5 text-slate-400 hover:bg-white/10'
                         }`}
                       >
                         {cat.label}
@@ -3151,7 +3151,7 @@ Lätt armhävningspåminnelse
                 {/* Time row */}
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                       <Clock size={10} className="inline mr-1" />Start
                     </label>
                     <input
@@ -3163,11 +3163,11 @@ Lätt armhävningspåminnelse
                           setEditBlockModal({ ...editBlockModal, start: newStart });
                         }
                       }}
-                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                       <Clock size={10} className="inline mr-1" />Slut
                     </label>
                     <input
@@ -3184,15 +3184,15 @@ Lätt armhävningspåminnelse
                           setEditBlockModal({ ...editBlockModal, duration: Math.round(newDuration * 2) / 2 });
                         }
                       }}
-                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                     {endTime > 24 && (
                       <p className="text-[10px] text-blue-600 font-bold mt-1">→ Nästa dag kl {formatTime(endTime - 24)}</p>
                     )}
                   </div>
                   <div className="w-20">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Längd</label>
-                    <div className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-md text-sm text-zinc-600 font-mono text-center">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Längd</label>
+                    <div className="px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-400 font-mono text-center">
                       {editBlockModal.duration}h
                     </div>
                   </div>
@@ -3200,18 +3200,18 @@ Lätt armhävningspåminnelse
 
                 {/* Status */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Status</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
                   <div className="flex gap-2">
                     {[
-                      { val: 'planned', label: 'Planerad', style: 'bg-blue-100 text-blue-700' },
-                      { val: 'done', label: 'Klar', style: 'bg-green-100 text-green-700' },
-                      { val: 'inactive', label: 'Inaktiv', style: 'bg-zinc-100 text-zinc-500' },
+                      { val: 'planned', label: 'Planerad', style: 'bg-blue-500/20 text-blue-300' },
+                      { val: 'done', label: 'Klar', style: 'bg-green-500/20 text-green-300' },
+                      { val: 'inactive', label: 'Inaktiv', style: 'bg-white/5 text-slate-400' },
                     ].map((s) => (
                       <button
                         key={s.val}
                         onClick={() => setEditBlockModal({ ...editBlockModal, status: s.val })}
                         className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
-                          editBlockModal.status === s.val ? `${s.style} ring-2 ring-offset-1 ring-black` : 'bg-zinc-50 text-zinc-400 hover:bg-zinc-100'
+                          editBlockModal.status === s.val ? `${s.style} ring-2 ring-offset-1 ring-white/50 ring-offset-[var(--surface-card)]` : 'bg-white/5 text-slate-500 hover:bg-white/10'
                         }`}
                       >
                         {s.label}
@@ -3223,12 +3223,12 @@ Lätt armhävningspåminnelse
                 {/* Project & Task */}
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Projekt</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Projekt</label>
                     <input
                       type="text"
                       value={editBlockModal.projectName}
                       onChange={(e) => setEditBlockModal({ ...editBlockModal, projectName: e.target.value })}
-                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder="Projektnamn"
                       list="project-history-list"
                     />
@@ -3250,12 +3250,12 @@ Lätt armhävningspåminnelse
                     </datalist>
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Uppgift</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Uppgift</label>
                     <input
                       type="text"
                       value={editBlockModal.taskName}
                       onChange={(e) => setEditBlockModal({ ...editBlockModal, taskName: e.target.value })}
-                      className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder="Uppgiftsnamn"
                     />
                   </div>
@@ -3263,20 +3263,20 @@ Lätt armhävningspåminnelse
 
                 {/* Description */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Beskrivning / anteckningar</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Beskrivning / anteckningar</label>
                   <textarea
                     value={editBlockModal.description}
                     onChange={(e) => setEditBlockModal({ ...editBlockModal, description: e.target.value })}
-                    className="w-full h-20 px-3 py-2 border border-zinc-200 rounded-md text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full h-20 px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-md text-sm text-slate-200 resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     placeholder="Vad ska göras? Anteckningar..."
                   />
                 </div>
               </div>
 
-              <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
+              <div className="p-4 bg-[var(--surface-elevated)] border-t border-white/10 flex justify-end gap-2">
                 <button
                   onClick={() => setEditBlockModal(null)}
-                  className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900"
+                  className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
                 >
                   Avbryt
                 </button>
@@ -3338,7 +3338,7 @@ Lätt armhävningspåminnelse
                     }
                     setEditBlockModal(null);
                   }}
-                  className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black transition-colors"
+                  className="bg-white text-[var(--surface-base)] px-4 py-2 rounded text-sm font-bold hover:bg-slate-200 transition-colors"
                 >
                   Spara
                 </button>
@@ -3350,7 +3350,7 @@ Lätt armhävningspåminnelse
 
       {/* Log Sidebar - Modernized */}
       <div
-        className={`log-sidebar fixed top-0 right-0 h-full w-full sm:w-[380px] bg-zinc-50 shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`log-sidebar fixed top-0 right-0 h-full w-full sm:w-[380px] bg-[var(--surface-base)] shadow-2xl z-[110] transform transition-transform duration-300 ease-in-out flex flex-col ${
           logSidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -3362,15 +3362,15 @@ Lätt armhävningspåminnelse
               {selectedLogDay !== null ? DAYS[selectedLogDay] : ''}
             </h3>
           </div>
-          <button onClick={() => setLogSidebarOpen(false)} className="text-zinc-400 hover:text-white transition-colors">
+          <button onClick={() => setLogSidebarOpen(false)} className="text-slate-400 hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
         {/* Point List - Cleaner spacing */}
-        <div className="flex-grow overflow-y-auto p-4 bg-zinc-50">
+        <div className="flex-grow overflow-y-auto p-4 bg-[var(--surface-base)]">
           {selectedLogDay !== null && (points[selectedLogDay] || []).length === 0 ? (
-            <div className="text-center text-zinc-400 italic py-12 text-sm">Inga punkter registrerade</div>
+            <div className="text-center text-slate-500 italic py-12 text-sm">Inga punkter registrerade</div>
           ) : (
             selectedLogDay !== null && (
               <ul className="space-y-2.5">
@@ -3384,7 +3384,7 @@ Lätt armhävningspåminnelse
                     const minutes = Math.round((log.timestamp % 1) * 60);
                     const isPlanned = log.status === 'planned';
                     return (
-                      <li key={log.id} className={`flex flex-col p-3 bg-white rounded-lg shadow-sm border-l-4 ${logCategory.border} group hover:shadow-md transition-shadow ${isPlanned ? 'opacity-60' : ''}`}>
+                      <li key={log.id} className={`flex flex-col p-3 bg-[var(--surface-card)] rounded-lg shadow-sm border-l-4 group hover:shadow-md transition-shadow ${isPlanned ? 'opacity-60' : ''}`} style={{ borderLeftColor: logCategory.hex }}>
                         <div className="flex justify-between items-start gap-2">
                           <input
                             type="checkbox"
@@ -3397,9 +3397,9 @@ Lätt armhävningspåminnelse
                             className="flex flex-col flex-grow cursor-pointer min-w-0"
                             onClick={() => setEditingLogId(isEditing ? null : log.id)}
                           >
-                            <span className={`text-sm font-semibold leading-tight ${isPlanned ? 'text-zinc-500' : 'text-zinc-900'}`}>{log.text}</span>
+                            <span className={`text-sm font-semibold leading-tight ${isPlanned ? 'text-slate-500' : 'text-slate-200'}`}>{log.text}</span>
                             {(log.projectName || log.taskName) && (
-                              <span className="text-[11px] text-zinc-500 mt-1">
+                              <span className="text-[11px] text-slate-500 mt-1">
                                 {log.projectName && log.taskName
                                   ? `${log.projectName} / ${log.taskName}`
                                   : log.projectName || log.taskName}
@@ -3416,9 +3416,9 @@ Lätt armhävningspåminnelse
                                     const newHours = Math.max(7, Math.min(23, parseInt(e.target.value) || 0));
                                     updatePointTime(selectedLogDay, log.id, newHours + minutes / 60);
                                   }}
-                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-zinc-50 border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
+                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-[var(--surface-input)] border border-white/10 text-slate-200 rounded focus:outline-none focus:border-blue-500"
                                 />
-                                <span className="text-xs font-mono text-zinc-400">:</span>
+                                <span className="text-xs font-mono text-slate-500">:</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -3428,7 +3428,7 @@ Lätt armhävningspåminnelse
                                     const newMinutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
                                     updatePointTime(selectedLogDay, log.id, hours + newMinutes / 60);
                                   }}
-                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-zinc-50 border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
+                                  className="w-12 px-1.5 py-1 text-xs font-mono bg-[var(--surface-input)] border border-white/10 text-slate-200 rounded focus:outline-none focus:border-blue-500"
                                 />
                                 <button
                                   onClick={() => setEditingLogTime(null)}
@@ -3439,7 +3439,7 @@ Lätt armhävningspåminnelse
                               </div>
                             ) : (
                               <span
-                                className="text-[11px] text-zinc-500 font-mono hover:text-zinc-900 cursor-pointer inline-block mt-1.5 bg-zinc-100 px-2 py-0.5 rounded"
+                                className="text-[11px] text-slate-500 font-mono hover:text-slate-200 cursor-pointer inline-block mt-1.5 bg-white/5 px-2 py-0.5 rounded"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setEditingLogTime(log.id);
@@ -3451,19 +3451,19 @@ Lätt armhävningspåminnelse
                           </div>
                           <button
                             onClick={() => removePoint(selectedLogDay, log.id)}
-                            className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                           >
                             <Trash2 size={16} />
                           </button>
                         </div>
                         {isEditing && (
-                          <div className="flex gap-1.5 mt-3 pt-3 border-t border-zinc-100">
+                          <div className="flex gap-1.5 mt-3 pt-3 border-t border-white/10">
                             {Object.values(categories).map((cat) => (
                               <button
                                 key={cat.id}
                                 onClick={() => updatePointCategory(selectedLogDay, log.id, cat.id)}
                                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                                  log.categoryId === cat.id ? 'ring-2 ring-offset-1 ring-zinc-400' : 'opacity-40 hover:opacity-70'
+                                  log.categoryId === cat.id ? 'ring-2 ring-offset-1 ring-white/50 ring-offset-[var(--surface-card)]' : 'opacity-40 hover:opacity-70'
                                 }`}
                                 style={{ backgroundColor: cat.hex, color: cat.textHex }}
                                 title={cat.label}
@@ -3483,8 +3483,8 @@ Lätt armhävningspåminnelse
 
         {/* Footer - Add New Log - Modernized */}
         {selectedLogDay !== null && (
-          <div className="flex-none p-4 bg-white border-t border-zinc-200">
-            <h4 className="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-wide">Snabbval</h4>
+          <div className="flex-none p-4 bg-[var(--surface-card)] border-t border-white/10">
+            <h4 className="text-xs font-bold uppercase text-slate-500 mb-3 tracking-wide">Snabbval</h4>
             <div className="flex flex-wrap gap-2 mb-4">
               {presets.map((preset, i) => {
                 const presetCategory = categories[preset.category] || categories.life || Object.values(categories)[0];
@@ -3492,7 +3492,7 @@ Lätt armhävningspåminnelse
                   <button
                     key={i}
                     onClick={() => addPoint(selectedLogDay, preset.label, null, preset.category)}
-                    className="bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 transition-all shadow-sm active:scale-95 flex gap-1.5 items-center"
+                    className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-white/10 hover:text-white transition-all shadow-sm active:scale-95 flex gap-1.5 items-center"
                   >
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: presetCategory.hex }} />
                     {preset.label}
@@ -3507,7 +3507,7 @@ Lätt armhävningspåminnelse
                   key={cat.id}
                   onClick={() => setSelectedLogCategory(cat.id)}
                   className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                    selectedLogCategory === cat.id ? 'ring-2 ring-zinc-900' : 'opacity-50 hover:opacity-100'
+                    selectedLogCategory === cat.id ? 'ring-2 ring-white/50' : 'opacity-50 hover:opacity-100'
                   }`}
                   style={{ backgroundColor: cat.hex, color: cat.textHex }}
                   title={cat.label}
@@ -3531,9 +3531,9 @@ Lätt armhävningspåminnelse
                 name="logInput"
                 type="text"
                 placeholder="Skriv aktivitet..."
-                className="flex-grow bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-900 focus:bg-white"
+                className="flex-grow bg-[var(--surface-input)] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
               />
-              <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-black transition-colors shadow-sm">
+              <button type="submit" className="bg-white text-[var(--surface-base)] px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors shadow-sm">
                 <Plus size={18} />
               </button>
             </form>
@@ -3551,8 +3551,8 @@ Lätt armhävningspåminnelse
 
       {logEntryModal && (
         <div className="log-entry-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[110]" onClick={() => setLogEntryModal(null)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`p-4 border-b flex justify-between items-center ${categories[logEntryModal.categoryId]?.bg || 'bg-zinc-100'} ${categories[logEntryModal.categoryId]?.text || 'text-zinc-900'}`}>
+          <div className="bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[var(--surface-elevated)]">
               <div className="flex items-center gap-2">
                 {getCategoryIcon(logEntryModal.categoryId, 18, categories)}
                 <h3 className="text-lg font-bold uppercase tracking-tight">Logga aktivitet</h3>
@@ -3578,13 +3578,13 @@ Lätt armhävningspåminnelse
                 name="logEntryInput"
                 type="text"
                 placeholder={`Vad gjorde du i ${categories[logEntryModal.categoryId]?.label || 'denna kategori'}?`}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mb-3"
+                className="w-full bg-[var(--surface-input)] border border-white/10 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 mb-3"
               />
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setLogEntryModal(null)} className="px-4 py-2 text-sm font-bold text-zinc-600 hover:text-zinc-900">
+                <button type="button" onClick={() => setLogEntryModal(null)} className="px-4 py-2 text-sm font-bold text-slate-400 hover:text-slate-200">
                   Avbryt
                 </button>
-                <button type="submit" className="bg-zinc-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-black">
+                <button type="submit" className="bg-white text-[var(--surface-base)] px-4 py-2 rounded text-sm font-bold hover:bg-slate-200">
                   Logga
                 </button>
               </div>
@@ -3595,27 +3595,27 @@ Lätt armhävningspåminnelse
 
       {importModalOpen && (
         <div className="import-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setImportModalOpen(false)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-zinc-700">Importera Plan</h3>
-              <button onClick={() => setImportModalOpen(false)} className="text-zinc-400 hover:text-zinc-900">
+          <div className="bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[var(--surface-elevated)] p-4 border-b border-white/10 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-200">Importera Plan</h3>
+              <button onClick={() => setImportModalOpen(false)} className="text-slate-500 hover:text-slate-200">
                 <X size={20} />
               </button>
             </div>
             <div className="p-4">
               <div className="mb-4">
-                <h4 className="text-xs font-bold uppercase text-zinc-400 mb-2">Tillgängliga Planer</h4>
+                <h4 className="text-xs font-bold uppercase text-slate-500 mb-2">Tillgängliga Planer</h4>
                 <div
                   onClick={() => handleImportPlan()}
-                  className="p-3 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded cursor-pointer transition-colors"
+                  className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded cursor-pointer transition-colors"
                 >
-                  <div className="font-bold text-sm text-zinc-800">10-dagars armhävningsplan</div>
-                  <div className="text-xs text-zinc-500 mt-1">
+                  <div className="font-bold text-sm text-slate-200">10-dagars armhävningsplan</div>
+                  <div className="text-xs text-slate-500 mt-1">
                     Start: 2026-01-08 • 10 dagar • Training
                   </div>
                 </div>
               </div>
-              <div className="text-xs text-zinc-500 mt-4">
+              <div className="text-xs text-slate-500 mt-4">
                 Klicka på en plan för att importera den till kalendern. Alla aktiviteter läggs in på rätt datum med checkboxes.
               </div>
             </div>
@@ -3625,21 +3625,21 @@ Lätt armhävningspåminnelse
 
       {settingsOpen && (
         <div className="settings-modal fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setSettingsOpen(false)}>
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-zinc-100 flex justify-between items-center sticky top-0 z-10" style={{ backgroundColor: '#001219', color: '#fff' }}>
-              <h3 className="text-lg font-bold">Inställningar</h3>
-              <button onClick={() => setSettingsOpen(false)} className="text-zinc-400 hover:text-white">
+          <div className="bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-white/10 flex justify-between items-center sticky top-0 z-10 bg-[var(--surface-elevated)]">
+              <h3 className="text-lg font-bold text-slate-200">Inställningar</h3>
+              <button onClick={() => setSettingsOpen(false)} className="text-slate-500 hover:text-slate-200">
                 <X size={20} />
               </button>
             </div>
             <div className="p-4">
               {/* Categories Section */}
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Kategorier</h4>
+              <h4 className="text-xs font-bold uppercase text-slate-500 mb-3">Kategorier</h4>
               <ul className="space-y-3 mb-4">
                 {Object.values(categories).map((cat) => {
                   const blocksInUse = calendar.filter(b => b.type === cat.id).length;
                   return (
-                    <li key={cat.id} className="bg-zinc-50 p-3 rounded-lg border border-zinc-200">
+                    <li key={cat.id} className="bg-white/5 p-3 rounded-lg border border-white/10">
                       <div className="flex gap-2 items-end mb-2">
                         <input
                           type="text"
@@ -3650,7 +3650,7 @@ Lätt armhävningspåminnelse
                               [cat.id]: { ...prev[cat.id], label: e.target.value }
                             }));
                           }}
-                          className="flex-grow bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
+                          className="flex-grow bg-[var(--surface-input)] border border-white/10 rounded px-2 py-1 text-sm text-slate-200"
                           placeholder="Kategorinaam"
                         />
                         {blocksInUse === 0 && (
@@ -3660,7 +3660,7 @@ Lätt armhävningspåminnelse
                               delete newCats[cat.id];
                               setCategories(newCats);
                             }}
-                            className="text-zinc-400 hover:text-red-500"
+                            className="text-slate-500 hover:text-red-400"
                             title="Radera kategori"
                           >
                             <Trash2 size={16} />
@@ -3668,7 +3668,7 @@ Lätt armhävningspåminnelse
                         )}
                       </div>
                       <div className="flex gap-2 items-center mb-2">
-                        <span className="text-xs font-bold text-zinc-600">Färg:</span>
+                        <span className="text-xs font-bold text-slate-400">Färg:</span>
                         <div className="flex gap-1 flex-wrap">
                           {COLOR_PALETTE.map(color => (
                             <button
@@ -3691,7 +3691,7 @@ Lätt armhävningspåminnelse
                         </div>
                       </div>
                       <div className="flex gap-2 items-center mb-2">
-                        <span className="text-xs font-bold text-zinc-600">Ikon:</span>
+                        <span className="text-xs font-bold text-slate-400">Ikon:</span>
                         <div className="flex gap-1 flex-wrap">
                           {ICON_OPTIONS.map(iconName => (
                             <button
@@ -3703,7 +3703,7 @@ Lätt armhävningspåminnelse
                                 }));
                               }}
                               className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
-                                cat.icon === iconName ? 'bg-zinc-900 text-white ring-2 ring-zinc-400' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                                cat.icon === iconName ? 'bg-white text-[var(--surface-base)] ring-2 ring-white/40' : 'bg-white/5 text-slate-400 hover:bg-white/10'
                               }`}
                               title={iconName}
                             >
@@ -3713,7 +3713,7 @@ Lätt armhävningspåminnelse
                         </div>
                       </div>
                       <div className="flex gap-2 items-center mb-2">
-                        <span className="text-xs font-bold text-zinc-600">Måltimmar/v:</span>
+                        <span className="text-xs font-bold text-slate-400">Måltimmar/v:</span>
                         <input
                           type="number"
                           min="0"
@@ -3725,12 +3725,12 @@ Lätt armhävningspåminnelse
                               [cat.id]: { ...prev[cat.id], targetHoursPerWeek: val }
                             }));
                           }}
-                          className="w-16 bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
+                          className="w-16 bg-[var(--surface-input)] border border-white/10 rounded px-2 py-1 text-sm text-slate-200"
                           placeholder="Opt."
                         />
                       </div>
                       <div className="flex gap-2 items-center">
-                        <span className="text-xs font-bold text-zinc-600">Målantalpoäng/v:</span>
+                        <span className="text-xs font-bold text-slate-400">Målantalpoäng/v:</span>
                         <input
                           type="number"
                           min="0"
@@ -3742,12 +3742,12 @@ Lätt armhävningspåminnelse
                               [cat.id]: { ...prev[cat.id], weeklyGoalPoints: val }
                             }));
                           }}
-                          className="w-16 bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
+                          className="w-16 bg-[var(--surface-input)] border border-white/10 rounded px-2 py-1 text-sm text-slate-200"
                           placeholder="Opt."
                         />
                       </div>
                       {blocksInUse > 0 && (
-                        <div className="text-[11px] text-zinc-500 mt-2">
+                        <div className="text-[11px] text-slate-500 mt-2">
                           {blocksInUse} block(ar) använder denna kategori
                         </div>
                       )}
@@ -3771,20 +3771,20 @@ Lätt armhävningspåminnelse
                     }
                   }));
                 }}
-                className="w-full py-2 border border-dashed border-zinc-300 text-zinc-400 rounded text-sm hover:text-zinc-600 hover:border-zinc-400 mb-4"
+                className="w-full py-2 border border-dashed border-white/10 text-slate-500 rounded text-sm hover:text-slate-300 hover:border-white/20 mb-4"
               >
                 + Lägg till kategori
               </button>
 
-              <hr className="my-4" />
+              <hr className="my-4 border-white/10" />
 
               {/* Presets Section */}
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Redigera Snabbval</h4>
+              <h4 className="text-xs font-bold uppercase text-slate-400 mb-3">Redigera Snabbval</h4>
               <ul className="space-y-2 mb-4">
                 {presets.map((preset, i) => (
                   <li key={i} className="flex gap-2">
                     <input
-                      className="flex-grow bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-sm"
+                      className="flex-grow bg-[var(--surface-input)] border border-white/10 rounded px-2 py-1 text-sm text-slate-200"
                       value={preset.label}
                       onChange={(e) => {
                         const newPresets = [...presets];
@@ -3792,7 +3792,7 @@ Lätt armhävningspåminnelse
                         setPresets(newPresets);
                       }}
                     />
-                    <button onClick={() => setPresets(presets.filter((_, idx) => idx !== i))} className="text-zinc-400 hover:text-red-500">
+                    <button onClick={() => setPresets(presets.filter((_, idx) => idx !== i))} className="text-slate-500 hover:text-red-400">
                       <Trash2 size={16} />
                     </button>
                   </li>
@@ -3800,17 +3800,17 @@ Lätt armhävningspåminnelse
               </ul>
               <button
                 onClick={() => setPresets([...presets, { label: 'Ny aktivitet', category: 'training', icon: 'star' }])}
-                className="w-full py-2 border border-dashed border-zinc-300 text-zinc-400 rounded text-sm hover:text-zinc-600 hover:border-zinc-400"
+                className="w-full py-2 border border-dashed border-white/10 text-slate-500 rounded text-sm hover:text-slate-300 hover:border-white/20"
               >
                 + Lägg till snabbval
               </button>
 
-              <hr className="my-4" />
+              <hr className="my-4 border-white/10" />
 
               {/* Notifications Section */}
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Notifikationer</h4>
-              <div className="flex items-center justify-between py-3 bg-zinc-50 px-3 rounded-lg mb-4">
-                <span className="text-sm font-bold text-zinc-700">Notiser vid passstart</span>
+              <h4 className="text-xs font-bold uppercase text-slate-400 mb-3">Notifikationer</h4>
+              <div className="flex items-center justify-between py-3 bg-white/5 px-3 rounded-lg mb-4">
+                <span className="text-sm font-bold text-slate-300">Notiser vid passstart</span>
                 <button onClick={async () => {
                   if (!notificationsEnabled) {
                     const perm = await Notification.requestPermission();
@@ -3821,18 +3821,18 @@ Lätt armhävningspåminnelse
                 }} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
                   notificationsEnabled
                     ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-zinc-300 text-zinc-700 hover:bg-zinc-400'
+                    : 'bg-white/10 text-slate-400 hover:bg-white/20'
                 }`}>
                   {notificationsEnabled ? '🔔 På' : '🔕 Av'}
                 </button>
               </div>
 
-              <hr className="my-4" />
+              <hr className="my-4 border-white/10" />
 
               {/* Backup Section */}
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Säkerhetskopiering</h4>
-              <div className="bg-zinc-50 p-3 rounded-lg border border-zinc-200 mb-4 space-y-3">
-                <p className="text-xs text-zinc-500">Exportera all data (veckor, kategorier, bank, mallar, presets). Importera för att återställa.</p>
+              <h4 className="text-xs font-bold uppercase text-slate-400 mb-3">Säkerhetskopiering</h4>
+              <div className="bg-white/5 p-3 rounded-lg border border-white/10 mb-4 space-y-3">
+                <p className="text-xs text-slate-500">Exportera all data (veckor, kategorier, bank, mallar, presets). Importera för att återställa.</p>
                 <div className="flex gap-2">
                   <button
                     onClick={handleFullExport}
@@ -3848,21 +3848,21 @@ Lätt armhävningspåminnelse
                   </button>
                   <input ref={backupInputRef} type="file" accept=".json" onChange={handleFullImport} className="hidden" />
                 </div>
-                <p className="text-[10px] text-zinc-400">Senast exporterad: — (spara regelbundet!)</p>
+                <p className="text-[10px] text-slate-500">Senast exporterad: — (spara regelbundet!)</p>
               </div>
 
-              <hr className="my-4" />
+              <hr className="my-4 border-white/10" />
 
               {/* Default Template Section */}
-              <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Standardmall för nya veckor</h4>
+              <h4 className="text-xs font-bold uppercase text-slate-400 mb-3">Standardmall för nya veckor</h4>
               {(() => {
                 const defaultTemplate = getDefaultTemplate();
                 return (
-                  <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 mb-4">
+                  <div className="bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 mb-4">
                     {defaultTemplate ? (
                       <div>
-                        <p className="text-sm font-bold text-amber-900 mb-2">{defaultTemplate.name}</p>
-                        <p className="text-xs text-amber-700 mb-3">
+                        <p className="text-sm font-bold text-amber-300 mb-2">{defaultTemplate.name}</p>
+                        <p className="text-xs text-amber-400/70 mb-3">
                           Sparad: {new Date(defaultTemplate.setAt).toLocaleDateString('sv-SE')}
                         </p>
                         <button
@@ -3873,7 +3873,7 @@ Lätt armhävningspåminnelse
                         </button>
                       </div>
                     ) : (
-                      <p className="text-sm text-amber-700">Ingen standardmall inställd. Spara en dagsmall och välj "Ställ in som veckomall".</p>
+                      <p className="text-sm text-amber-400/70">Ingen standardmall inställd. Spara en dagsmall och välj "Ställ in som veckomall".</p>
                     )}
                   </div>
                 );
@@ -3913,7 +3913,7 @@ Lätt armhävningspåminnelse
       <div className="fixed bottom-0 left-0 right-0 z-50">
         {bankOpen ? (
           <div
-            className="bg-white border-t-2 border-zinc-300 shadow-2xl max-h-[40vh] overflow-y-auto"
+            className="bg-[var(--surface-card)] border-t border-white/10 shadow-2xl max-h-[40vh] overflow-y-auto"
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
             onDrop={(e) => {
               e.preventDefault();
@@ -3926,12 +3926,12 @@ Lätt armhävningspåminnelse
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-base">📦</span>
-                  <h3 className="text-sm font-bold text-zinc-700">Lådan</h3>
-                  <span className="text-xs text-zinc-400">{bankItems.length} block</span>
+                  <h3 className="text-sm font-bold text-slate-300">Lådan</h3>
+                  <span className="text-xs text-slate-500">{bankItems.length} block</span>
                 </div>
                 <button
                   onClick={() => setBankOpen(false)}
-                  className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-600"
+                  className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-slate-200"
                 >
                   <X size={18} />
                 </button>
@@ -3966,7 +3966,7 @@ Lätt armhävningspåminnelse
                   })}
                 </div>
               ) : (
-                <div className="flex items-center justify-center py-6 border-2 border-dashed border-zinc-200 rounded-lg text-zinc-400">
+                <div className="flex items-center justify-center py-6 border-2 border-dashed border-white/10 rounded-lg text-slate-500">
                   <p className="text-sm">Dra block hit för att spara dem</p>
                 </div>
               )}
@@ -3988,7 +3988,7 @@ Lätt armhävningspåminnelse
       <button
         onClick={() => setAddPointModalOpen(true)}
         className="fixed bottom-20 right-6 w-14 h-14 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] transition-all hover:scale-110 active:scale-95"
-        style={{ backgroundColor: '#ee9b00' }}
+        style={{ backgroundColor: '#ee9b00', boxShadow: '0 0 20px 4px rgba(238,155,0,0.3)' }}
         onMouseEnter={(e) => e.target.style.backgroundColor = '#d68a00'}
         onMouseLeave={(e) => e.target.style.backgroundColor = '#ee9b00'}
         title="Lägg till punkt"
@@ -4002,13 +4002,13 @@ Lätt armhävningspåminnelse
           setAddPointModalOpen(false);
           setQuickTrainingCount(0);
         }}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--surface-card)]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-zinc-900">Lägg till punkt</h2>
+              <h2 className="text-xl font-bold text-slate-100">Lägg till punkt</h2>
               <button onClick={() => {
                 setAddPointModalOpen(false);
                 setQuickTrainingCount(0);
-              }} className="text-zinc-400 hover:text-zinc-600">
+              }} className="text-slate-400 hover:text-slate-200">
                 <X size={24} />
               </button>
             </div>
@@ -4017,8 +4017,8 @@ Lätt armhävningspåminnelse
             {presets.filter(p => p.category === 'training').length > 0 && (
               <div className="mb-4">
                 <h3 className="text-xs font-bold uppercase text-red-500 mb-2">🔥 Snabbträning</h3>
-                <p className="text-[10px] text-zinc-500 mb-2">
-                  {quickTrainingCount > 0 && <span className="font-bold text-red-600">{quickTrainingCount} aktiviteter registrerade denna session</span>}
+                <p className="text-[10px] text-slate-500 mb-2">
+                  {quickTrainingCount > 0 && <span className="font-bold text-red-400">{quickTrainingCount} aktiviteter registrerade denna session</span>}
                   {quickTrainingCount === 0 && <span>En-klick registrering</span>}
                 </p>
                 <div className="grid grid-cols-2 gap-2 mb-4">
@@ -4040,7 +4040,7 @@ Lätt armhävningspåminnelse
 
             {/* Presets */}
             <div className="mb-4">
-              <h3 className="text-xs font-bold uppercase text-zinc-400 mb-2">Snabbval</h3>
+              <h3 className="text-xs font-bold uppercase text-slate-400 mb-2">Snabbval</h3>
               <div className="grid grid-cols-2 gap-2">
                 {presets.map((preset, i) => {
                   const presetCat = categories[preset.category] || categories.life || Object.values(categories)[0];
@@ -4064,26 +4064,26 @@ Lätt armhävningspåminnelse
             {/* Input Form */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-bold text-zinc-700 mb-1">Aktivitet</label>
+                <label className="block text-sm font-bold text-slate-300 mb-1">Aktivitet</label>
                 <input
                   type="text"
                   value={pointText}
                   onChange={(e) => setPointText(e.target.value)}
                   placeholder="T.ex. Armhävningar"
-                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:border-yellow-500"
+                  className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-yellow-500"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-zinc-700 mb-1">Tid</label>
+                <label className="block text-sm font-bold text-slate-300 mb-1">Tid</label>
                 <input
                   type="time"
                   value={pointTime}
                   onChange={(e) => setPointTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:border-yellow-500"
+                  className="w-full px-3 py-2 bg-[var(--surface-input)] border border-white/10 rounded-lg text-slate-200 focus:outline-none focus:border-yellow-500"
                 />
-                <p className="text-xs text-zinc-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {pointTime ? (
                     <>
                       {(() => {
@@ -4092,8 +4092,8 @@ Lätt armhävningspåminnelse
                         const now = new Date();
                         const currentHour = now.getHours() + now.getMinutes() / 60;
                         return selectedTime > currentHour ?
-                          <span className="text-blue-600 font-bold">→ Planerad (framtid)</span> :
-                          <span className="text-green-600 font-bold">→ Klar (nu/tidigare)</span>;
+                          <span className="text-blue-400 font-bold">→ Planerad (framtid)</span> :
+                          <span className="text-green-400 font-bold">→ Klar (nu/tidigare)</span>;
                       })()}
                     </>
                   ) : (
@@ -4103,7 +4103,7 @@ Lätt armhävningspåminnelse
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-zinc-700 mb-2">Kategori</label>
+                <label className="block text-sm font-bold text-slate-300 mb-2">Kategori</label>
                 <div className="flex gap-2">
                   {Object.values(categories).map((cat) => (
                     <button
@@ -4111,7 +4111,7 @@ Lätt armhävningspåminnelse
                       onClick={() => setPointCategory(cat.id)}
                       className={`flex-1 py-2 rounded-lg font-bold transition-all ${
                         pointCategory === cat.id
-                          ? 'ring-2 ring-offset-2 ring-zinc-400 scale-105'
+                          ? 'ring-2 ring-offset-2 ring-white/50 ring-offset-[var(--surface-card)] scale-105'
                           : 'opacity-60 hover:opacity-90 hover:scale-105'
                       }`}
                       style={{ backgroundColor: cat.hex, color: cat.textHex }}
@@ -4130,7 +4130,7 @@ Lätt armhävningspåminnelse
                   setAddPointModalOpen(false);
                   setQuickTrainingCount(0);
                 }}
-                className="flex-1 px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-bold rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/15 text-slate-400 font-bold rounded-lg transition-colors"
               >
                 Avbryt
               </button>
@@ -4165,24 +4165,24 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget, cumFle
 
   return (
     <div className="flex flex-col items-end">
-      <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+      <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
         {label}
         {showWarning && <AlertCircle size={10} className="text-red-500" />}
       </span>
-      <div className={`flex items-baseline gap-1 ${showWarning ? 'text-red-600' : isDone ? 'text-green-600' : 'text-zinc-900'}`}>
+      <div className={`flex items-baseline gap-1 ${showWarning ? 'text-red-400' : isDone ? 'text-green-400' : 'text-slate-100'}`}>
         <span className="text-lg font-black tracking-tighter">{current}</span>
-        <span className="text-[10px] font-medium text-zinc-400">
+        <span className="text-[10px] font-medium text-slate-400">
           / {total} {unit}
-          {target && <span className="text-[8px] text-zinc-400 ml-1">(mål {target})</span>}
+          {target && <span className="text-[8px] text-slate-500 ml-1">(mål {target})</span>}
         </span>
       </div>
       {weekDiff !== null && (
-        <span className={`text-[9px] font-bold ${weekDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+        <span className={`text-[9px] font-bold ${weekDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
           v: {weekDiff >= 0 ? '+' : ''}{weekDiff}{unit}
         </span>
       )}
       {cumFlex && cumFlex.weekCount > 1 && (
-        <span className={`text-[9px] font-bold ${cumFlex.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+        <span className={`text-[9px] font-bold ${cumFlex.diff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
           totalt: {cumFlex.diff >= 0 ? '+' : ''}{cumFlex.diff}{unit} ({cumFlex.weekCount}v)
         </span>
       )}
@@ -4234,17 +4234,18 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
         onDragStart={onDragStart}
         onClick={onClick}
         className={`
-        block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2
-        ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}
+        block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 border-l-2
+        ${isSelected ? 'ring-2 ring-white/70 ring-offset-1 ring-offset-[var(--surface-base)] z-50' : 'hover:brightness-110 group/block'}
       `}
         style={{
           ...positionStyle,
           ...(isParallel ? {} : { left: '4px', right: '4px' }),
-          backgroundColor: isDone ? (cat?.doneHex || '#f4f4f5') : (cat?.hex || '#001219'),
-          color: isDone ? (cat?.doneTextHex || '#71717a') : (cat?.textHex || '#fff'),
-          borderLeftColor: isDone ? (cat?.doneBorderHex || '#d4d4d8') : (cat?.borderHex || cat?.hex || '#001219'),
+          backgroundColor: isDone ? (cat?.doneHex || '#1a2235') : (cat?.hex || '#001219'),
+          color: isDone ? (cat?.doneTextHex || '#64748b') : (cat?.textHex || '#fff'),
+          borderLeftColor: isDone ? (cat?.doneBorderHex || '#2a3548') : (cat?.borderHex || cat?.hex || '#001219'),
           borderLeftWidth: '2px',
-          ...(isDone ? { opacity: 0.85 } : {}),
+          ...(isDone ? { opacity: 0.7 } : {}),
+          ...(!isDone ? { boxShadow: `0 0 12px 2px ${(cat?.hex || '#001219')}30` } : {}),
         }}
       >
         <div className="flex justify-between items-start p-1.5 h-full relative">
@@ -4336,7 +4337,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
 
         {!isEditing && (
           <div
-            className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center hover:bg-black/10 transition-colors opacity-0 group-hover/block:opacity-100"
+            className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center hover:bg-white/10 transition-colors opacity-0 group-hover/block:opacity-100"
             onMouseDown={(e) => onResizeStart(e, block)}
             onClick={(e) => e.stopPropagation()}
           >
