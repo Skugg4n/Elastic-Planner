@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.18.4';
+const APP_VERSION = '1.19.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -14,7 +14,7 @@ const CATEGORIES_KEY = 'elastic-planner-categories';
 const FLEX_KEY = 'elastic-planner-flex';
 const DEFAULT_TEMPLATE_KEY = 'elastic-planner-default-template';
 const BANK_KEY = 'elastic-planner-bank';
-const EXCLUDED_DAYS_KEY = 'elastic-planner-excluded-days';
+
 
 const COLOR_PALETTE = [
   { id: 'ink-black', hex: '#001219', textHex: '#ffffff', borderHex: '#001219', doneHex: '#e8eaed', doneTextHex: '#5f6368', doneBorderHex: '#dadce0' },
@@ -501,11 +501,27 @@ const migrateCategoryColors = (weeksData) => {
         invoiced: block.invoiced ?? false,
       })),
       points: weekData.points || {},
-      excludedDays: weekData.excludedDays || [],
     };
   }
 
   return migratedData;
+};
+
+const migrateDayStatuses = (weeksData) => {
+  const migrated = {};
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    if (weekData.dayStatuses) {
+      migrated[weekId] = weekData;
+      continue;
+    }
+    const dayStatuses = {};
+    if (weekData.excludedDays) {
+      weekData.excludedDays.forEach(d => { dayStatuses[d] = 'off'; });
+    }
+    const { excludedDays, ...rest } = weekData;
+    migrated[weekId] = { ...rest, dayStatuses };
+  }
+  return migrated;
 };
 
 const getInitialWeeksData = () => {
@@ -522,6 +538,7 @@ const getInitialWeeksData = () => {
         migrated = migrateLogsToPoints(migrated);
         migrated = migrateParallelId(migrated);
         migrated = migrateCategoryColors(migrated);
+        migrated = migrateDayStatuses(migrated);
         return migrated;
       }
     } catch (e) {
@@ -1313,17 +1330,18 @@ export default function ElasticPlanner() {
   const realTodayIndex = (new Date().getDay() + 6) % 7;
   const isCurrentWeek = currentWeekIndex === getCurrentWeek();
   const todayIndex = isCurrentWeek ? realTodayIndex : -1; // -1 means no today indicator
-  const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {}, excludedDays: [] };
-  const { calendar, points, excludedDays = [] } = currentData;
+  const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {}, dayStatuses: {} };
+  const { calendar, points, dayStatuses = {} } = currentData;
 
-  const toggleExcludedDay = (dayIndex) => {
-    const current = excludedDays || [];
-    const newExcluded = current.includes(dayIndex)
-      ? current.filter(d => d !== dayIndex)
-      : [...current, dayIndex];
+  const cycleDayStatus = (dayIndex) => {
+    const current = dayStatuses[dayIndex] || 'normal';
+    const next = current === 'normal' ? 'half' : current === 'half' ? 'off' : 'normal';
     pushUndo(weeksData);
+    const newStatuses = { ...dayStatuses };
+    if (next === 'normal') delete newStatuses[dayIndex];
+    else newStatuses[dayIndex] = next;
     const newData = { ...weeksData };
-    newData[currentWeekIndex] = { ...newData[currentWeekIndex], excludedDays: newExcluded };
+    newData[currentWeekIndex] = { ...newData[currentWeekIndex], dayStatuses: newStatuses };
     setWeeksData(newData);
   };
 
@@ -2361,6 +2379,11 @@ Lätt armhävningspåminnelse
   const realCurrentWeek = getCurrentWeek();
   const realCurrentDayIndex = (now.getDay() + 6) % 7; // 0=Mon, 6=Sun
 
+  const getDayFactor = (ds, d) => {
+    const s = (ds || {})[d] || 'normal';
+    return s === 'off' ? 0 : s === 'half' ? 0.5 : 1;
+  };
+
   Object.values(categories).forEach(cat => {
     if (!cat.targetHoursPerWeek) return;
     let totalDone = 0;
@@ -2378,26 +2401,25 @@ Lätt armhävningspåminnelse
       const doneBlocksForCat = weekData.calendar.filter(b => b.type === cat.id && b.status === 'done');
       if (doneBlocksForCat.length === 0) return;
 
-      const weekExcludedDays = weekData.excludedDays || [];
+      const weekDayStatuses = weekData.dayStatuses || {};
       let blocksToCount;
 
       if (weekIndex === realCurrentWeek) {
-        // Current week: count done blocks up to today, pro-rate target
+        // Current week: count done blocks up to today (excluding off-days), pro-rate target
         blocksToCount = doneBlocksForCat.filter(b =>
-          b.day <= realCurrentDayIndex && !weekExcludedDays.includes(b.day)
+          b.day <= realCurrentDayIndex && getDayFactor(weekDayStatuses, b.day) > 0
         );
-        const daysElapsed = Math.min(realCurrentDayIndex + 1, 5);
-        const excludedWorkdays = weekExcludedDays.filter(d => d < 5 && d <= realCurrentDayIndex).length;
-        const effectiveDays = Math.max(daysElapsed - excludedWorkdays, 0);
+        let effectiveDays = 0;
+        for (let d = 0; d <= Math.min(realCurrentDayIndex, 4); d++) {
+          effectiveDays += getDayFactor(weekDayStatuses, d);
+        }
         totalTarget += cat.targetHoursPerWeek * (effectiveDays / 5);
       } else {
-        // Past week: pro-rate target based on workdays that have blocks (any category, any status)
-        // This handles partial weeks (e.g. started tracking mid-week)
-        blocksToCount = doneBlocksForCat.filter(b => !weekExcludedDays.includes(b.day));
-        const trackedWorkdays = [0, 1, 2, 3, 4].filter(d =>
-          !weekExcludedDays.includes(d) &&
-          weekData.calendar.some(b => b.day === d)
-        ).length;
+        // Past week: pro-rate target based on tracked workdays with dayFactor
+        blocksToCount = doneBlocksForCat.filter(b => getDayFactor(weekDayStatuses, b.day) > 0);
+        const trackedWorkdays = [0, 1, 2, 3, 4]
+          .filter(d => getDayFactor(weekDayStatuses, d) > 0 && weekData.calendar.some(b => b.day === d))
+          .reduce((sum, d) => sum + getDayFactor(weekDayStatuses, d), 0);
         totalTarget += cat.targetHoursPerWeek * (trackedWorkdays / 5);
       }
 
@@ -2637,8 +2659,8 @@ Lätt armhävningspåminnelse
                         {hasTrainingFire && (
                           <span className="text-lg">🔥</span>
                         )}
-                        <button onClick={() => toggleExcludedDay(dIndex)} className="text-[10px] opacity-50 hover:opacity-100 transition-opacity" title="Undanta dag från statistik">
-                          {excludedDays.includes(dIndex) ? '🏖️' : ''}
+                        <button onClick={() => cycleDayStatus(dIndex)} className="text-[10px] opacity-50 hover:opacity-100 transition-opacity" title="Normal → Halvdag → Ledig">
+                          {(dayStatuses[dIndex] || 'normal') === 'half' ? '🌤️' : (dayStatuses[dIndex] || 'normal') === 'off' ? '🏖️' : ''}
                         </button>
                       </div>
                       <div className="flex items-center gap-1">
