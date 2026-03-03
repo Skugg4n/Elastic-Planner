@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.18.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -392,6 +392,7 @@ const migrateToProjectTracking = (weeksData) => {
 
   for (const [weekId, weekData] of Object.entries(weeksData)) {
     migratedData[weekId] = {
+      ...weekData,
       calendar: (weekData.calendar || []).map((block) => ({
         ...block,
         projectName: block.projectName || null,
@@ -428,6 +429,7 @@ const migrateBankRemoval = (weeksData) => {
     }
 
     migratedData[weekId] = {
+      ...weekData,
       calendar: weekData.calendar || [],
       logs: weekData.logs || {},
     };
@@ -441,7 +443,8 @@ const migrateLogsToPoints = (weeksData) => {
   const migratedData = {};
 
   for (const [weekId, weekData] of Object.entries(weeksData)) {
-    const points = {};
+    // Preserve existing points if already migrated
+    const points = { ...(weekData.points || {}) };
 
     if (weekData.logs) {
       for (const [dayIndex, dayLogs] of Object.entries(weekData.logs)) {
@@ -459,6 +462,7 @@ const migrateLogsToPoints = (weeksData) => {
     }
 
     migratedData[weekId] = {
+      ...weekData,
       calendar: weekData.calendar || [],
       points: points,
     };
@@ -473,6 +477,7 @@ const migrateParallelId = (weeksData) => {
 
   for (const [weekId, weekData] of Object.entries(weeksData)) {
     migratedData[weekId] = {
+      ...weekData,
       calendar: (weekData.calendar || []).map((block) => ({
         ...block,
         parallelId: block.parallelId || null,
@@ -490,6 +495,7 @@ const migrateCategoryColors = (weeksData) => {
 
   for (const [weekId, weekData] of Object.entries(weeksData)) {
     migratedData[weekId] = {
+      ...weekData,
       calendar: (weekData.calendar || []).map((block) => ({
         ...block,
         invoiced: block.invoiced ?? false,
