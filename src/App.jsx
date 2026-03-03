@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.18.3';
+const APP_VERSION = '1.18.4';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -2374,28 +2374,31 @@ Lätt armhävningspåminnelse
       // Skip future weeks entirely
       if (weekIndex > realCurrentWeek) return;
 
-      // Only count weeks that have any calendar data (= user has used this week)
-      if (weekData.calendar.length === 0) return;
+      // Skip weeks with no "done" blocks for this category (handles template/unused weeks)
+      const doneBlocksForCat = weekData.calendar.filter(b => b.type === cat.id && b.status === 'done');
+      if (doneBlocksForCat.length === 0) return;
 
       const weekExcludedDays = weekData.excludedDays || [];
-      let blocksToCount = weekData.calendar.filter(b => b.type === cat.id && b.status === 'done');
+      let blocksToCount;
 
       if (weekIndex === realCurrentWeek) {
         // Current week: count done blocks up to today, pro-rate target
-        blocksToCount = blocksToCount.filter(b =>
+        blocksToCount = doneBlocksForCat.filter(b =>
           b.day <= realCurrentDayIndex && !weekExcludedDays.includes(b.day)
         );
-        // Pro-rate: count workdays elapsed (Mon=0 means 1 day done, up to Fri=4 means 5 days)
-        const daysElapsed = Math.min(realCurrentDayIndex + 1, 5); // cap at 5 workdays
+        const daysElapsed = Math.min(realCurrentDayIndex + 1, 5);
         const excludedWorkdays = weekExcludedDays.filter(d => d < 5 && d <= realCurrentDayIndex).length;
         const effectiveDays = Math.max(daysElapsed - excludedWorkdays, 0);
         totalTarget += cat.targetHoursPerWeek * (effectiveDays / 5);
       } else {
-        // Past week: count all done blocks, full target minus excluded workdays
-        blocksToCount = blocksToCount.filter(b => !weekExcludedDays.includes(b.day));
-        const excludedWorkdays = weekExcludedDays.filter(d => d < 5).length;
-        const effectiveWorkdays = Math.max(5 - excludedWorkdays, 0);
-        totalTarget += cat.targetHoursPerWeek * (effectiveWorkdays / 5);
+        // Past week: pro-rate target based on workdays that have blocks (any category, any status)
+        // This handles partial weeks (e.g. started tracking mid-week)
+        blocksToCount = doneBlocksForCat.filter(b => !weekExcludedDays.includes(b.day));
+        const trackedWorkdays = [0, 1, 2, 3, 4].filter(d =>
+          !weekExcludedDays.includes(d) &&
+          weekData.calendar.some(b => b.day === d)
+        ).length;
+        totalTarget += cat.targetHoursPerWeek * (trackedWorkdays / 5);
       }
 
       totalDone += blocksToCount.reduce((a, b) => a + b.duration, 0);

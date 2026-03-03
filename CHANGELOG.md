@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.4] - 2026-03-03
+
+### Fixed
+- **"Totalt" räknade template-veckor och delveckor fel.** Veckor utan några "done"-block för kategorin (t.ex. template-veckor med bara planerade block) räknas inte längre med — de la till 0h gjort men 24h mål, vilket drog ner totalt-siffran kraftigt. Dessutom pro-ratas nu målet för tidigare veckor baserat på vilka arbetsdagar som faktiskt hade block (löser problemet med V.1 där tidräkningen startade på en fredag — bara den dagen räknas mot målet, inte hela veckan).
+
 ## [1.18.3] - 2026-03-03
 
 ### Fixed
