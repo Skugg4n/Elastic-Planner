@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 
-const APP_VERSION = '1.18.2';
+const APP_VERSION = '1.18.3';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -2355,44 +2355,53 @@ Lätt armhävningspåminnelse
   const totalWeekPoints = weekPoints.length;
 
   // Cumulative flex: sum done hours vs target across ALL weeks for categories with targets
+  // Uses real current week (not viewed week) so the value stays stable when navigating
   const cumulativeFlex = {};
   const now = new Date();
-  const currentDayIndex = (now.getDay() + 6) % 7;
+  const realCurrentWeek = getCurrentWeek();
+  const realCurrentDayIndex = (now.getDay() + 6) % 7; // 0=Mon, 6=Sun
 
   Object.values(categories).forEach(cat => {
     if (!cat.targetHoursPerWeek) return;
     let totalDone = 0;
+    let totalTarget = 0;
     let weekCount = 0;
+
     Object.entries(weeksData).forEach(([weekId, weekData]) => {
       if (!weekData.calendar) return;
       const weekIndex = parseInt(weekId);
 
-      // Determine which blocks to count based on week position
+      // Skip future weeks entirely
+      if (weekIndex > realCurrentWeek) return;
+
+      // Only count weeks that have any calendar data (= user has used this week)
+      if (weekData.calendar.length === 0) return;
+
+      const weekExcludedDays = weekData.excludedDays || [];
       let blocksToCount = weekData.calendar.filter(b => b.type === cat.id && b.status === 'done');
 
-      // For current week: only count days up to and including today, skip excluded days
-      if (weekIndex === currentWeekIndex) {
-        const weekExcludedDays = weekData.excludedDays || [];
+      if (weekIndex === realCurrentWeek) {
+        // Current week: count done blocks up to today, pro-rate target
         blocksToCount = blocksToCount.filter(b =>
-          b.day <= currentDayIndex && !weekExcludedDays.includes(b.day)
+          b.day <= realCurrentDayIndex && !weekExcludedDays.includes(b.day)
         );
-      } else if (weekIndex > currentWeekIndex) {
-        // Skip future weeks
-        blocksToCount = [];
+        // Pro-rate: count workdays elapsed (Mon=0 means 1 day done, up to Fri=4 means 5 days)
+        const daysElapsed = Math.min(realCurrentDayIndex + 1, 5); // cap at 5 workdays
+        const excludedWorkdays = weekExcludedDays.filter(d => d < 5 && d <= realCurrentDayIndex).length;
+        const effectiveDays = Math.max(daysElapsed - excludedWorkdays, 0);
+        totalTarget += cat.targetHoursPerWeek * (effectiveDays / 5);
       } else {
-        // For past weeks: count all done blocks, but skip excluded days
-        const weekExcludedDays = weekData.excludedDays || [];
+        // Past week: count all done blocks, full target minus excluded workdays
         blocksToCount = blocksToCount.filter(b => !weekExcludedDays.includes(b.day));
+        const excludedWorkdays = weekExcludedDays.filter(d => d < 5).length;
+        const effectiveWorkdays = Math.max(5 - excludedWorkdays, 0);
+        totalTarget += cat.targetHoursPerWeek * (effectiveWorkdays / 5);
       }
 
-      const weekDone = blocksToCount.reduce((a, b) => a + b.duration, 0);
-      // Only count weeks that have any blocks for this category (to avoid counting empty weeks)
-      if (weekDone > 0 || weekData.calendar.some(b => b.type === cat.id)) {
-        totalDone += weekDone;
-        weekCount++;
-      }
+      totalDone += blocksToCount.reduce((a, b) => a + b.duration, 0);
+      weekCount++;
     });
-    const totalTarget = weekCount * cat.targetHoursPerWeek;
+
     cumulativeFlex[cat.id] = {
       totalDone: Math.round(totalDone * 10) / 10,
       totalTarget: Math.round(totalTarget * 10) / 10,
