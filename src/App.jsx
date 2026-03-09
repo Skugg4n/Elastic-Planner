@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, LogIn, LogOut, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { loginWithGoogle, logout, onAuthChange } from './auth';
+import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
 const APP_VERSION = '1.19.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
@@ -1288,6 +1290,116 @@ export default function ElasticPlanner() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [undoToast, setUndoToast] = useState(null);
 
+  // --- Auth & Firestore sync ---
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'synced' | 'error'
+  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
+  const firestoreLoadedRef = useRef(false);
+  const loadingFromFirestoreRef = useRef(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthChange(async (user) => {
+      setAuthUser(user);
+      setAuthLoading(false);
+      if (user) {
+        setUser(user.uid);
+        // Check if Firestore has data for this user
+        const hasData = await hasFirestoreData();
+        if (!hasData) {
+          // No Firestore data — offer to migrate from localStorage
+          const hasLocal = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (hasLocal) {
+            setShowMigrationPrompt(true);
+          } else {
+            // No local data either, just start saving to Firestore
+            firestoreLoadedRef.current = true;
+          }
+        } else {
+          // Load from Firestore and replace local state
+          setSyncStatus('syncing');
+          loadingFromFirestoreRef.current = true;
+          try {
+            const [fsSettings, fsBankData, fsTemplateData] = await Promise.all([
+              loadSettings(),
+              loadBank(),
+              loadTemplates(),
+            ]);
+            if (fsSettings?.categories) {
+              setCategories(prev => {
+                const merged = {};
+                Object.entries(fsSettings.categories).forEach(([key, cat]) => {
+                  const defaults = DEFAULT_CATEGORIES[key] || {};
+                  merged[key] = { ...defaults, ...cat, id: key };
+                });
+                return merged;
+              });
+            }
+            if (fsSettings?.projectHistory) {
+              setProjectHistory(fsSettings.projectHistory);
+            }
+            if (fsBankData) setBankItems(fsBankData);
+            if (fsTemplateData) {
+              if (fsTemplateData.templates) {
+                localStorage.setItem('elastic-planner-templates', JSON.stringify(fsTemplateData.templates));
+              }
+              if (fsTemplateData.defaultTemplate) {
+                localStorage.setItem(DEFAULT_TEMPLATE_KEY, JSON.stringify(fsTemplateData.defaultTemplate));
+              }
+            }
+            // Load current week from Firestore
+            const fsWeek = await loadWeek(currentWeekIndex);
+            if (fsWeek && fsWeek.length > 0) {
+              setWeeksData(prev => ({
+                ...prev,
+                [currentWeekIndex]: { ...prev[currentWeekIndex], calendar: fsWeek },
+              }));
+            }
+            firestoreLoadedRef.current = true;
+            setTimeout(() => { loadingFromFirestoreRef.current = false; }, 100);
+            setSyncStatus('synced');
+            setTimeout(() => setSyncStatus(null), 2000);
+          } catch (err) {
+            console.error('Firestore load failed:', err);
+            setSyncStatus('error');
+            firestoreLoadedRef.current = true;
+            loadingFromFirestoreRef.current = false;
+          }
+        }
+      } else {
+        setUser(null);
+        firestoreLoadedRef.current = false;
+        setSyncStatus(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleMigration = async () => {
+    setSyncStatus('syncing');
+    setShowMigrationPrompt(false);
+    try {
+      const result = await migrateFromLocalStorage();
+      if (result.migrated) {
+        firestoreLoadedRef.current = true;
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus(null), 3000);
+      } else {
+        firestoreLoadedRef.current = true;
+        setSyncStatus('error');
+      }
+    } catch (err) {
+      console.error('Migration failed:', err);
+      firestoreLoadedRef.current = true;
+      setSyncStatus('error');
+    }
+  };
+
+  const skipMigration = () => {
+    setShowMigrationPrompt(false);
+    firestoreLoadedRef.current = true;
+  };
+
   // --- Undo/Redo system ---
   const undoStack = useRef([]);
   const redoStack = useRef([]);
@@ -1347,19 +1459,63 @@ export default function ElasticPlanner() {
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(weeksData));
-  }, [weeksData]);
+    // Sync current week to Firestore (skip if we just loaded from Firestore)
+    if (authUser && firestoreLoadedRef.current && !loadingFromFirestoreRef.current) {
+      const weekData = weeksData[currentWeekIndex];
+      if (weekData?.calendar) {
+        saveWeek(currentWeekIndex, weekData.calendar).catch(err =>
+          console.error('Firestore week save failed:', err)
+        );
+      }
+    }
+  }, [weeksData, authUser, currentWeekIndex]);
 
   useEffect(() => {
     localStorage.setItem(CURRENT_WEEK_KEY, String(currentWeekIndex));
-  }, [currentWeekIndex]);
+    // Load week from Firestore when switching weeks
+    if (authUser && firestoreLoadedRef.current) {
+      loadingFromFirestoreRef.current = true;
+      loadWeek(currentWeekIndex).then(fsWeek => {
+        if (fsWeek && fsWeek.length > 0) {
+          setWeeksData(prev => ({
+            ...prev,
+            [currentWeekIndex]: { ...prev[currentWeekIndex], calendar: fsWeek },
+          }));
+        }
+        setTimeout(() => { loadingFromFirestoreRef.current = false; }, 100);
+      }).catch(err => {
+        console.error('Firestore week load failed:', err);
+        loadingFromFirestoreRef.current = false;
+      });
+    }
+  }, [currentWeekIndex, authUser]);
 
   useEffect(() => {
     localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-  }, [categories]);
+    if (authUser && firestoreLoadedRef.current) {
+      saveSettings({ categories, projectHistory }).catch(err =>
+        console.error('Firestore settings save failed:', err)
+      );
+    }
+  }, [categories, authUser]);
 
   useEffect(() => {
     localStorage.setItem(BANK_KEY, JSON.stringify(bankItems));
-  }, [bankItems]);
+    if (authUser && firestoreLoadedRef.current) {
+      saveBank(bankItems).catch(err =>
+        console.error('Firestore bank save failed:', err)
+      );
+    }
+  }, [bankItems, authUser]);
+
+  // Sync project history to Firestore
+  useEffect(() => {
+    if (authUser && firestoreLoadedRef.current) {
+      saveSettings({ categories, projectHistory }).catch(err =>
+        console.error('Firestore projectHistory save failed:', err)
+      );
+    }
+  }, [projectHistory, authUser]);
 
   // Apply default template to new weeks
   useEffect(() => {
@@ -1536,6 +1692,10 @@ export default function ElasticPlanner() {
     };
 
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+    if (authUser && firestoreLoadedRef.current) {
+      const defaultTpl = (() => { try { return JSON.parse(localStorage.getItem(DEFAULT_TEMPLATE_KEY) || 'null'); } catch { return null; } })();
+      saveTemplates({ templates, defaultTemplate: defaultTpl }).catch(err => console.error('Firestore template save failed:', err));
+    }
   };
 
   const applyTemplate = (templateName, dayIndex) => {
@@ -1572,6 +1732,10 @@ export default function ElasticPlanner() {
     const templates = listTemplates();
     delete templates[templateName];
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+    if (authUser && firestoreLoadedRef.current) {
+      const defaultTpl = (() => { try { return JSON.parse(localStorage.getItem(DEFAULT_TEMPLATE_KEY) || 'null'); } catch { return null; } })();
+      saveTemplates({ templates, defaultTemplate: defaultTpl }).catch(err => console.error('Firestore template save failed:', err));
+    }
   };
 
   const saveAsDefaultTemplate = (dayIndex) => {
@@ -1586,6 +1750,10 @@ export default function ElasticPlanner() {
     };
 
     localStorage.setItem(DEFAULT_TEMPLATE_KEY, JSON.stringify(defaultTemplate));
+    if (authUser && firestoreLoadedRef.current) {
+      const templates = listTemplates();
+      saveTemplates({ templates, defaultTemplate }).catch(err => console.error('Firestore template save failed:', err));
+    }
     setTemplateDropdownDay(null);
   };
 
@@ -2499,6 +2667,31 @@ Lätt armhävningspåminnelse
             >
               <Settings size={16} />
             </button>
+            <div className="h-6 w-px bg-zinc-200" />
+            {/* Auth & Sync */}
+            {authUser ? (
+              <div className="flex items-center gap-2">
+                {syncStatus === 'syncing' && <span className="text-[10px] text-yellow-500 animate-pulse">Synkar...</span>}
+                {syncStatus === 'synced' && <span className="text-[10px] text-green-600">Synkad</span>}
+                {syncStatus === 'error' && <span className="text-[10px] text-red-500">Synkfel</span>}
+                <span className="text-[10px] text-zinc-500 max-w-[80px] truncate" title={authUser.email}>{authUser.displayName?.split(' ')[0] || authUser.email}</span>
+                <button
+                  onClick={() => { logout(); }}
+                  className="p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded transition-colors"
+                  title="Logga ut"
+                >
+                  <LogOut size={13} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => loginWithGoogle()}
+                className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 hover:text-zinc-800 px-2 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
+                title="Logga in med Google för molnsynk"
+              >
+                <LogIn size={13} /> Synka
+              </button>
+            )}
             <div className="h-6 w-px bg-zinc-200" />
             <div className="flex gap-1 items-center">
               <button
@@ -4151,6 +4344,30 @@ Lätt armhävningspåminnelse
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] animate-pulse">
           <div className="px-4 py-2 rounded-lg shadow-lg text-sm font-bold text-white" style={{ backgroundColor: '#001219' }}>
             {undoToast}
+          </div>
+        </div>
+      )}
+      {showMigrationPrompt && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-zinc-200 rounded-xl p-6 max-w-sm mx-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-zinc-900 mb-2">Flytta data till molnet?</h3>
+            <p className="text-sm text-zinc-500 mb-4">
+              Du har planeringsdata sparad lokalt. Vill du flytta den till ditt konto s&aring; den synkas mellan enheter?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleMigration}
+                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white text-sm font-bold rounded-lg transition-colors"
+              >
+                Ja, flytta
+              </button>
+              <button
+                onClick={skipMigration}
+                className="flex-1 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-sm font-bold rounded-lg transition-colors"
+              >
+                Hoppa &ouml;ver
+              </button>
+            </div>
           </div>
         </div>
       )}
