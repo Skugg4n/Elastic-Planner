@@ -1233,35 +1233,38 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
 
         {/* Footer - Export & Invoice Actions */}
         <div className="flex-none p-4 border-t border-zinc-200 bg-white space-y-2">
-          {invoiceFilter === 'not-invoiced' && (() => {
+          {(() => {
             const allBlocks = Object.values(weeksData)
               .filter((wd, i) => (i + 1) >= weekStart && (i + 1) <= weekEnd)
               .flatMap(wd => wd.calendar || []);
-            const filteredBlocks = allBlocks.filter(b => {
+            const uninvoicedBlocks = allBlocks.filter(b => {
               if (filterCategory && b.type !== filterCategory) return false;
               if (filterProject && !(b.projectName === filterProject || (!b.projectName && b.label === filterProject))) return false;
               if (filterTask && b.taskName !== filterTask) return false;
               if (freeTextFilter) {
                 const q = freeTextFilter.toLowerCase();
+                const catLabel = (categories[b.type]?.label || '').toLowerCase();
                 if (!(
                   (b.label || '').toLowerCase().includes(q) ||
                   (b.projectName || '').toLowerCase().includes(q) ||
                   (b.taskName || '').toLowerCase().includes(q) ||
-                  (b.description || '').toLowerCase().includes(q)
+                  (b.description || '').toLowerCase().includes(q) ||
+                  catLabel.includes(q) ||
+                  (b.type || '').toLowerCase().includes(q)
                 )) return false;
               }
               return !b.invoiced;
             });
-            return filteredBlocks.length > 0 ? (
+            return uninvoicedBlocks.length > 0 ? (
               <button
                 onClick={() => {
                   if (onUpdateBlocks) {
-                    onUpdateBlocks(filteredBlocks.map(b => ({ ...b, invoiced: true, invoicedAt: Date.now() })));
+                    onUpdateBlocks(uninvoicedBlocks.map(b => ({ ...b, invoiced: true, invoicedAt: Date.now() })));
                   }
                 }}
                 className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
               >
-                ✓ Markera {filteredBlocks.length} som fakturerade
+                ✓ Markera {uninvoicedBlocks.length} block ({Math.round(uninvoicedBlocks.reduce((a, b) => a + b.duration, 0) * 10) / 10}h) som fakturerade
               </button>
             ) : null;
           })()}
