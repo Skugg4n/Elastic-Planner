@@ -699,7 +699,7 @@ const aggregateWeeksData = (weeksData, weekStart, weekEnd) => {
   return aggregated;
 };
 
-const generateReport = (weeksData, weekStart, weekEnd, filters) => {
+const generateReport = (weeksData, weekStart, weekEnd, filters, categories = {}) => {
   const { categoryId, projectName, taskName, freeText } = filters;
   const data = aggregateWeeksData(weeksData, weekStart, weekEnd);
 
@@ -724,12 +724,15 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
 
   if (freeText) {
     const q = freeText.toLowerCase();
-    filteredBlocks = filteredBlocks.filter((b) =>
-      (b.label || '').toLowerCase().includes(q) ||
-      (b.projectName || '').toLowerCase().includes(q) ||
-      (b.taskName || '').toLowerCase().includes(q) ||
-      (b.description || '').toLowerCase().includes(q)
-    );
+    filteredBlocks = filteredBlocks.filter((b) => {
+      const catLabel = (categories[b.type]?.label || '').toLowerCase();
+      return (b.label || '').toLowerCase().includes(q) ||
+        (b.projectName || '').toLowerCase().includes(q) ||
+        (b.taskName || '').toLowerCase().includes(q) ||
+        (b.description || '').toLowerCase().includes(q) ||
+        catLabel.includes(q) ||
+        (b.type || '').toLowerCase().includes(q);
+    });
     filteredPoints = filteredPoints.filter((p) =>
       (p.text || '').toLowerCase().includes(q) ||
       (p.projectName || '').toLowerCase().includes(q) ||
@@ -739,29 +742,38 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
 
   // Calculate totals
   const totalHours = filteredBlocks.reduce((sum, b) => sum + (b.status === 'done' ? b.duration : 0), 0);
+  const plannedHours = filteredBlocks.reduce((sum, b) => sum + (b.status === 'planned' ? b.duration : 0), 0);
   const totalPoints = filteredPoints.length;
 
-  // Group by project
+  // Group by project - include both done and planned blocks
   const projectMap = {};
 
   filteredBlocks.forEach((block) => {
+    if (block.status === 'inactive') return;
     const projKey = block.projectName || block.label;
     if (!projKey) return;
     if (!projectMap[projKey]) {
       projectMap[projKey] = {
         name: projKey,
         hours: 0,
+        plannedHours: 0,
         pointCount: 0,
         tasks: {},
       };
     }
     if (block.status === 'done') {
       projectMap[projKey].hours += block.duration;
-      if (block.taskName) {
-        if (!projectMap[projKey].tasks[block.taskName]) {
-          projectMap[projKey].tasks[block.taskName] = { name: block.taskName, hours: 0, pointCount: 0 };
-        }
+    } else if (block.status === 'planned') {
+      projectMap[projKey].plannedHours += block.duration;
+    }
+    if (block.taskName) {
+      if (!projectMap[projKey].tasks[block.taskName]) {
+        projectMap[projKey].tasks[block.taskName] = { name: block.taskName, hours: 0, plannedHours: 0, pointCount: 0 };
+      }
+      if (block.status === 'done') {
         projectMap[projKey].tasks[block.taskName].hours += block.duration;
+      } else if (block.status === 'planned') {
+        projectMap[projKey].tasks[block.taskName].plannedHours += block.duration;
       }
     }
   });
@@ -790,7 +802,7 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
       ...proj,
       tasks: Object.values(proj.tasks),
     }))
-    .sort((a, b) => b.hours - a.hours);
+    .sort((a, b) => (b.hours + b.plannedHours) - (a.hours + a.plannedHours));
 
   // Get all unique project and task names for filter dropdowns
   const allProjects = [...new Set([...data.blocks.map((b) => b.projectName || b.label), ...data.points.map((p) => p.projectName)])].filter(Boolean).sort();
@@ -801,6 +813,7 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
 
   return {
     totalHours: Math.round(totalHours * 10) / 10,
+    plannedHours: Math.round(plannedHours * 10) / 10,
     totalPoints,
     byProject,
     allProjects,
@@ -962,7 +975,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
     projectName: filterProject,
     taskName: filterTask,
     freeText: freeTextFilter,
-  });
+  }, categories);
 
   const handleExport = () => {
     const exportData = {
@@ -1132,7 +1145,10 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="bg-zinc-900 p-3 rounded-lg text-center">
               <div className="text-2xl font-black text-white">{reportData.totalHours}<span className="text-sm font-normal">h</span></div>
-              <div className="text-[10px] text-zinc-400 uppercase mt-1">Timmar</div>
+              <div className="text-[10px] text-zinc-400 uppercase mt-1">Klara</div>
+              {reportData.plannedHours > 0 && (
+                <div className="text-[10px] text-blue-400 mt-0.5">+{reportData.plannedHours}h plan</div>
+              )}
             </div>
             <div className="bg-zinc-900 p-3 rounded-lg text-center">
               <div className="text-2xl font-black text-white">{reportData.totalPoints}</div>
@@ -1191,7 +1207,8 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
                 <div key={proj.name} className="bg-white border border-zinc-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
                   <div className="font-bold text-zinc-900 mb-2">{proj.name}</div>
                   <div className="flex gap-4 text-xs text-zinc-600 mb-3">
-                    <span className="font-bold">{proj.hours}h</span>
+                    <span className="font-bold">{proj.hours}h klar</span>
+                    {proj.plannedHours > 0 && <span className="text-blue-500">{proj.plannedHours}h planerad</span>}
                     <span>{proj.pointCount} aktiviteter</span>
                   </div>
                   {proj.tasks.length > 0 && (
@@ -1199,7 +1216,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
                       {proj.tasks.map((task) => (
                         <div key={task.name} className="flex justify-between items-center text-xs">
                           <span className="font-medium text-zinc-700">{task.name}</span>
-                          <span className="text-zinc-500">{task.hours}h · {task.pointCount}</span>
+                          <span className="text-zinc-500">{task.hours}h{task.plannedHours > 0 ? ` + ${task.plannedHours}h plan` : ''} · {task.pointCount}</span>
                         </div>
                       ))}
                     </div>
