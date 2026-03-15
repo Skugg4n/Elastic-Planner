@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, LogIn, LogOut, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, LogIn, LogOut, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Search, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.20.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -700,7 +700,7 @@ const aggregateWeeksData = (weeksData, weekStart, weekEnd) => {
 };
 
 const generateReport = (weeksData, weekStart, weekEnd, filters) => {
-  const { categoryId, projectName, taskName } = filters;
+  const { categoryId, projectName, taskName, freeText } = filters;
   const data = aggregateWeeksData(weeksData, weekStart, weekEnd);
 
   // Filter data
@@ -713,13 +713,28 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
   }
 
   if (projectName) {
-    filteredBlocks = filteredBlocks.filter((b) => b.projectName === projectName);
+    filteredBlocks = filteredBlocks.filter((b) => b.projectName === projectName || (!b.projectName && b.label === projectName));
     filteredPoints = filteredPoints.filter((p) => p.projectName === projectName);
   }
 
   if (taskName) {
     filteredBlocks = filteredBlocks.filter((b) => b.taskName === taskName);
     filteredPoints = filteredPoints.filter((p) => p.taskName === taskName);
+  }
+
+  if (freeText) {
+    const q = freeText.toLowerCase();
+    filteredBlocks = filteredBlocks.filter((b) =>
+      (b.label || '').toLowerCase().includes(q) ||
+      (b.projectName || '').toLowerCase().includes(q) ||
+      (b.taskName || '').toLowerCase().includes(q) ||
+      (b.description || '').toLowerCase().includes(q)
+    );
+    filteredPoints = filteredPoints.filter((p) =>
+      (p.text || '').toLowerCase().includes(q) ||
+      (p.projectName || '').toLowerCase().includes(q) ||
+      (p.taskName || '').toLowerCase().includes(q)
+    );
   }
 
   // Calculate totals
@@ -730,22 +745,23 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
   const projectMap = {};
 
   filteredBlocks.forEach((block) => {
-    if (!block.projectName) return;
-    if (!projectMap[block.projectName]) {
-      projectMap[block.projectName] = {
-        name: block.projectName,
+    const projKey = block.projectName || block.label;
+    if (!projKey) return;
+    if (!projectMap[projKey]) {
+      projectMap[projKey] = {
+        name: projKey,
         hours: 0,
         pointCount: 0,
         tasks: {},
       };
     }
     if (block.status === 'done') {
-      projectMap[block.projectName].hours += block.duration;
+      projectMap[projKey].hours += block.duration;
       if (block.taskName) {
-        if (!projectMap[block.projectName].tasks[block.taskName]) {
-          projectMap[block.projectName].tasks[block.taskName] = { name: block.taskName, hours: 0, pointCount: 0 };
+        if (!projectMap[projKey].tasks[block.taskName]) {
+          projectMap[projKey].tasks[block.taskName] = { name: block.taskName, hours: 0, pointCount: 0 };
         }
-        projectMap[block.projectName].tasks[block.taskName].hours += block.duration;
+        projectMap[projKey].tasks[block.taskName].hours += block.duration;
       }
     }
   });
@@ -777,7 +793,7 @@ const generateReport = (weeksData, weekStart, weekEnd, filters) => {
     .sort((a, b) => b.hours - a.hours);
 
   // Get all unique project and task names for filter dropdowns
-  const allProjects = [...new Set([...data.blocks.map((b) => b.projectName), ...data.points.map((p) => p.projectName)])].filter(Boolean).sort();
+  const allProjects = [...new Set([...data.blocks.map((b) => b.projectName || b.label), ...data.points.map((p) => p.projectName)])].filter(Boolean).sort();
 
   const allTasks = [
     ...new Set([...data.blocks.map((b) => b.taskName), ...data.points.map((p) => p.taskName)]),
@@ -936,6 +952,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
   const [filterCategory, setFilterCategory] = useState('');
   const [filterProject, setFilterProject] = useState('');
   const [filterTask, setFilterTask] = useState('');
+  const [freeTextFilter, setFreeTextFilter] = useState('');
   const [weekStart, setWeekStart] = useState(currentWeekIndex);
   const [weekEnd, setWeekEnd] = useState(currentWeekIndex);
   const [invoiceFilter, setInvoiceFilter] = useState('all'); // 'all', 'invoiced', 'not-invoiced'
@@ -944,6 +961,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
     categoryId: filterCategory,
     projectName: filterProject,
     taskName: filterTask,
+    freeText: freeTextFilter,
   });
 
   const handleExport = () => {
@@ -990,6 +1008,24 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
 
         {/* Filters - Compact */}
         <div className="flex-none p-4 border-b border-zinc-200 bg-white">
+          <div className="relative mb-3">
+            <input
+              type="text"
+              value={freeTextFilter}
+              onChange={(e) => setFreeTextFilter(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-lg pl-8 pr-8 py-2 text-xs focus:outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900"
+              placeholder="Sök i namn, projekt, uppgift, beskrivning..."
+            />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+            {freeTextFilter && (
+              <button
+                onClick={() => setFreeTextFilter('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2 mb-3">
             <select
               value={filterCategory}
@@ -1115,8 +1151,17 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
               .flatMap(wd => wd.calendar || []);
             const filteredBlocks = allBlocks.filter(b => {
               if (filterCategory && b.type !== filterCategory) return false;
-              if (filterProject && b.projectName !== filterProject) return false;
+              if (filterProject && !(b.projectName === filterProject || (!b.projectName && b.label === filterProject))) return false;
               if (filterTask && b.taskName !== filterTask) return false;
+              if (freeTextFilter) {
+                const q = freeTextFilter.toLowerCase();
+                if (!(
+                  (b.label || '').toLowerCase().includes(q) ||
+                  (b.projectName || '').toLowerCase().includes(q) ||
+                  (b.taskName || '').toLowerCase().includes(q) ||
+                  (b.description || '').toLowerCase().includes(q)
+                )) return false;
+              }
               if (invoiceFilter === 'invoiced' && !b.invoiced) return false;
               if (invoiceFilter === 'not-invoiced' && b.invoiced) return false;
               return true;
@@ -1177,8 +1222,17 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
               .flatMap(wd => wd.calendar || []);
             const filteredBlocks = allBlocks.filter(b => {
               if (filterCategory && b.type !== filterCategory) return false;
-              if (filterProject && b.projectName !== filterProject) return false;
+              if (filterProject && !(b.projectName === filterProject || (!b.projectName && b.label === filterProject))) return false;
               if (filterTask && b.taskName !== filterTask) return false;
+              if (freeTextFilter) {
+                const q = freeTextFilter.toLowerCase();
+                if (!(
+                  (b.label || '').toLowerCase().includes(q) ||
+                  (b.projectName || '').toLowerCase().includes(q) ||
+                  (b.taskName || '').toLowerCase().includes(q) ||
+                  (b.description || '').toLowerCase().includes(q)
+                )) return false;
+              }
               return !b.invoiced;
             });
             return filteredBlocks.length > 0 ? (
@@ -3074,6 +3128,7 @@ Lätt armhävningspåminnelse
                                   duration: block.duration,
                                   projectName: block.projectName || '',
                                   taskName: block.taskName || '',
+                                  invoiced: block.invoiced || false,
                                 });
                                 setSelectedBlockIds([]);
                               }
@@ -3464,6 +3519,24 @@ Lätt armhävningspåminnelse
                     placeholder="Vad ska göras? Anteckningar..."
                   />
                 </div>
+
+                {/* Invoiced toggle */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditBlockModal({ ...editBlockModal, invoiced: !editBlockModal.invoiced })}
+                    className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      editBlockModal.invoiced
+                        ? 'bg-green-100 text-green-700 ring-2 ring-offset-1 ring-green-600'
+                        : 'bg-zinc-50 text-zinc-400 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <Check size={12} />
+                    Fakturerad
+                  </button>
+                  {editBlockModal.invoiced && (
+                    <span className="text-[10px] text-green-600">Markerad som fakturerad</span>
+                  )}
+                </div>
               </div>
 
               <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
@@ -3490,6 +3563,8 @@ Lätt armhävningspåminnelse
                         description: editBlockModal.description,
                         projectName: editBlockModal.projectName || null,
                         taskName: editBlockModal.taskName || null,
+                        invoiced: editBlockModal.invoiced,
+                        ...(editBlockModal.invoiced && !b.invoiced ? { invoicedAt: Date.now() } : {}),
                       };
                     });
 
@@ -4558,6 +4633,23 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-8 h-1 bg-white/30 rounded-full" />
+          </div>
+        )}
+
+        {/* Invoiced indicator - folded corner */}
+        {block.invoiced && (
+          <div className="absolute bottom-0 right-0 pointer-events-none">
+            <div
+              style={{
+                width: 0,
+                height: 0,
+                borderLeft: '12px solid transparent',
+                borderBottom: `12px solid ${isDone ? '#16a34a' : '#22c55e'}`,
+              }}
+            />
+            <svg className="absolute bottom-[1px] right-[1px]" width="7" height="7" viewBox="0 0 7 7">
+              <path d="M1 6L6 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
           </div>
         )}
       </div>

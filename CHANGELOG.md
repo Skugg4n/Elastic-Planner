@@ -5,6 +5,19 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-03-15
+
+### Added
+- **Visuell faktura-indikator i kalendern:** Block som markerats som fakturerade visar nu en grön vikt hörn-triangel i nedre-höger hörnet. Diskret men tydlig — syns direkt i veckovyn utan att störa.
+- **Faktura-toggle i edit-modalen:** Nytt "Fakturerad"-knapp i blockens redigeringsmodal. Klicka för att toggla fakturastatus. Visar grön markering när aktiv. Sparar även `invoicedAt`-tidsstämpel.
+
+- **Fritextsökning i rapporten:** Nytt sökfält högst upp i filterpanelen. Söker i blocknamn (label), projektnamn, uppgiftsnamn och beskrivning. Case-insensitive. Med rensa-knapp (X). Påverkar alla delar av rapporten inklusive fakturastats och "Markera som fakturerade".
+
+### Fixed
+- **Rapport filtrerar nu på label som fallback:** Block utan `projectName` men med en anpassad label (t.ex. "IPT") matchas nu korrekt när man filtrerar på det i rapporten. Tidigare visade rapporten 0h för dessa block trots att de fanns. Påverkar filtrering, fakturastats, gruppering och "Markera som fakturerade"-knappen.
+- Fakturastatus (`invoiced`) fanns i datan sedan v1.18.0 men syntes **inte alls** i kalendervyn — bara i rapporten. Nu syns det tydligt med visuell feedback.
+- Edit-modalen bevarade inte `invoiced`-status vid sparning — fixat.
+
 ## [1.19.0] - 2026-03-03
 
 ### Changed
