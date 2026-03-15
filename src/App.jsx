@@ -687,8 +687,8 @@ const aggregateWeeksData = (weeksData, weekStart, weekEnd) => {
     const weekData = weeksData[weekNum];
     if (!weekData) continue;
 
-    // Aggregate blocks from calendar
-    aggregated.blocks.push(...(weekData.calendar || []));
+    // Aggregate blocks from calendar (attach week number for date resolution)
+    aggregated.blocks.push(...(weekData.calendar || []).map(b => ({ ...b, _weekNum: weekNum })));
 
     // Aggregate points
     Object.values(weekData.points || {}).forEach((dayPoints) => {
@@ -1268,6 +1268,86 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
               </button>
             ) : null;
           })()}
+          <button
+            onClick={() => {
+              // Build text summary from filtered report data
+              const allBlocks = Object.values(weeksData)
+                .filter((wd, i) => (i + 1) >= weekStart && (i + 1) <= weekEnd)
+                .flatMap((wd, i) => {
+                  const weekNum = Object.keys(weeksData).map(Number).sort((a, b) => a - b)
+                    .filter(k => k >= weekStart && k <= weekEnd)[i];
+                  return (wd.calendar || []).map(b => ({ ...b, _weekNum: weekNum }));
+                });
+              const q = freeTextFilter?.toLowerCase();
+              const filtered = allBlocks.filter(b => {
+                if (b.status === 'inactive') return false;
+                if (filterCategory && b.type !== filterCategory) return false;
+                if (filterProject && !(b.projectName === filterProject || (!b.projectName && b.label === filterProject))) return false;
+                if (filterTask && b.taskName !== filterTask) return false;
+                if (q) {
+                  const catLabel = (categories[b.type]?.label || '').toLowerCase();
+                  if (!(
+                    (b.label || '').toLowerCase().includes(q) ||
+                    (b.projectName || '').toLowerCase().includes(q) ||
+                    (b.taskName || '').toLowerCase().includes(q) ||
+                    (b.description || '').toLowerCase().includes(q) ||
+                    catLabel.includes(q) ||
+                    (b.type || '').toLowerCase().includes(q)
+                  )) return false;
+                }
+                if (invoiceFilter === 'invoiced' && !b.invoiced) return false;
+                if (invoiceFilter === 'not-invoiced' && b.invoiced) return false;
+                return true;
+              });
+
+              // Sort by date
+              filtered.sort((a, b) => {
+                if (a._weekNum !== b._weekNum) return a._weekNum - b._weekNum;
+                if (a.day !== b.day) return a.day - b.day;
+                return a.start - b.start;
+              });
+
+              const dayNames = ['mån', 'tis', 'ons', 'tor', 'fre', 'lör', 'sön'];
+              const startDate = getDateForDay(weekStart, 0);
+              const endDate = getDateForDay(weekEnd, 6);
+
+              let title = 'Tidrapport';
+              if (freeTextFilter) title += `: ${freeTextFilter}`;
+              else if (filterProject) title += `: ${filterProject}`;
+
+              let text = `${title}\n`;
+              text += `Period: v.${weekStart}–${weekEnd} (${formatDate(startDate)} – ${formatDate(endDate)})\n`;
+              text += `${'─'.repeat(40)}\n\n`;
+
+              const doneHours = filtered.filter(b => b.status === 'done').reduce((s, b) => s + b.duration, 0);
+              const plannedHours = filtered.filter(b => b.status === 'planned').reduce((s, b) => s + b.duration, 0);
+
+              filtered.forEach(b => {
+                const date = b._weekNum ? getDateForDay(b._weekNum, b.day) : null;
+                const dateStr = date ? `${dayNames[b.day]} ${formatDate(date)}` : dayNames[b.day];
+                const proj = b.projectName || b.label;
+                const task = b.taskName ? ` / ${b.taskName}` : '';
+                const status = b.status === 'done' ? '✓' : '○';
+                const inv = b.invoiced ? ' [fakturerad]' : '';
+                text += `${status} ${b.duration}h  ${proj}${task}  (${dateStr})${inv}\n`;
+              });
+
+              text += `\n${'─'.repeat(40)}\n`;
+              text += `Klart: ${Math.round(doneHours * 10) / 10}h\n`;
+              if (plannedHours > 0) text += `Planerat: ${Math.round(plannedHours * 10) / 10}h\n`;
+              text += `Totalt: ${Math.round((doneHours + plannedHours) * 10) / 10}h\n`;
+
+              navigator.clipboard.writeText(text).then(() => {
+                const btn = document.activeElement;
+                const original = btn?.textContent;
+                if (btn) { btn.textContent = '✓ Kopierat!'; setTimeout(() => { btn.textContent = original; }, 2000); }
+              });
+            }}
+            className="w-full bg-zinc-700 hover:bg-zinc-800 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+          >
+            <Copy size={16} />
+            Kopiera som text
+          </button>
           <button
             onClick={handleExport}
             className="w-full bg-zinc-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm"
