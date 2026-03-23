@@ -5,6 +5,23 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-03-23
+
+### Changed
+- **Template-modal istället för dropdown/popup:** Klicka på mall-ikonen → öppnar en ren modal med alla mall-funktioner: spara, sätt veckomall, visa/rensa aktiv veckomall, använda/radera sparade mallar. Inga fler `prompt()`-dialoger.
+- **Nya veckor startar tomma:** Tidigare använde nya veckor en hårdkodad `generateStandardWeek()` med fördefinierade block. Nu startar de tomma (om ingen veckomall är satt).
+
+### Added
+- **"Kopiera som text"-knapp i rapporten:** Kopierar filtrerad rapport som löptext till clipboard — perfekt för fakturaunderlag. Inkluderar datum, projekt/uppgift, timmar, status.
+- **Rapport visar planerade timmar:** Tidigare visades bara "done"-block. Nu visas planerade separat (blått) så att inget försvinner.
+- **Rapport fritextsökning:** Sökfält som söker i blocknamn, projektnamn, uppgiftsnamn, beskrivning, kategorinamn.
+- **Bulk-faktura-knapp alltid synlig:** "Markera som fakturerade"-knappen syns nu direkt när det finns ofakturerade block i filtret, utan att behöva byta dropdown.
+
+### Fixed
+- **Rapport matchade inte block utan projektnamn:** Block med anpassad label (t.ex. "IPT") men tomt projektnamn matchades inte i rapportens filter. Nu används label som fallback.
+- **Faktura-indikator saknades i kalendervyn:** Grön vikt hörn-triangel visas nu på fakturerade block.
+- **Edit-modalen sparade inte faktura-status:** Fixat, inkl. ny toggle-knapp.
+
 ## [1.20.0] - 2026-03-15
 
 ### Added
