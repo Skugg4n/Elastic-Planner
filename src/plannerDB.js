@@ -142,15 +142,26 @@ export async function loadTemplates() {
   return null;
 }
 
-export async function saveTemplates(templates) {
+export async function saveTemplates(data) {
+  // data = { templates: {...}, defaultTemplate: {...} | null }
+  // Save individual parts to localStorage (App.jsx reads them separately)
   try {
-    localStorage.setItem("elastic-planner-templates", JSON.stringify(templates));
+    if (data.templates) {
+      localStorage.setItem("elastic-planner-templates", JSON.stringify(data.templates));
+    }
+    if (data.defaultTemplate !== undefined) {
+      if (data.defaultTemplate) {
+        localStorage.setItem("elastic-planner-default-template", JSON.stringify(data.defaultTemplate));
+      } else {
+        localStorage.removeItem("elastic-planner-default-template");
+      }
+    }
   } catch (e) { /* ignore */ }
 
   if (currentUid) {
     try {
       await setDoc(userDoc("templates", "all"), {
-        ...templates,
+        ...data,
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
