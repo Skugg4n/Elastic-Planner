@@ -1403,6 +1403,8 @@ export default function ElasticPlanner() {
   const [logEntryModal, setLogEntryModal] = useState(null);
   const [editingLogId, setEditingLogId] = useState(null);
   const [templateDropdownDay, setTemplateDropdownDay] = useState(null);
+  const [templateModal, setTemplateModal] = useState(null); // { dayIndex, mode: 'manage' | 'save' }
+  const [templateSaveName, setTemplateSaveName] = useState('');
   const [editingLogTime, setEditingLogTime] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -1787,7 +1789,8 @@ export default function ElasticPlanner() {
 
   useEffect(() => {
     if (!weeksData[currentWeekIndex]) {
-      setWeeksData((prev) => ({ ...prev, [currentWeekIndex]: generateStandardWeek(currentWeekIndex) }));
+      // Start new weeks empty (default template is applied in the earlier useEffect if set)
+      setWeeksData((prev) => ({ ...prev, [currentWeekIndex]: { calendar: [], points: {} } }));
     }
   }, [currentWeekIndex, weeksData]);
 
@@ -3013,66 +3016,12 @@ Lätt armhävningspåminnelse
                       <div className="flex items-center gap-1">
                         <div className="relative">
                           <button
-                            onClick={() => setTemplateDropdownDay(templateDropdownDay === dIndex ? null : dIndex)}
+                            onClick={() => { setTemplateModal({ dayIndex: dIndex, mode: 'manage' }); setTemplateSaveName(''); }}
                             className="p-0.5 rounded transition-all hover:scale-110 text-zinc-400 hover:text-zinc-600"
                             title="Mallar"
                           >
                             <FileText size={14} />
                           </button>
-                          {templateDropdownDay === dIndex && (
-                            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl p-2 w-48 z-[100] border border-zinc-200">
-                              <div className="flex flex-col gap-1">
-                                <button
-                                  onClick={() => {
-                                    const name = prompt('Mallnamn:');
-                                    if (name) {
-                                      saveTemplate(name, dIndex);
-                                      setTemplateDropdownDay(null);
-                                    }
-                                  }}
-                                  className="text-left px-2 py-1.5 hover:bg-zinc-50 rounded text-xs font-bold text-zinc-700"
-                                >
-                                  + Spara som mall
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    saveAsDefaultTemplate(dIndex);
-                                  }}
-                                  className="text-left px-2 py-1.5 hover:bg-amber-50 rounded text-xs font-bold text-amber-700"
-                                  title="Kommer att tillämpas på alla nya veckor"
-                                >
-                                  🗂️ Ställ in som veckomall
-                                </button>
-                                <div className="border-t border-zinc-100 my-1" />
-                                {Object.keys(listTemplates()).length === 0 ? (
-                                  <div className="text-xs text-zinc-400 italic px-2 py-1">Inga mallar</div>
-                                ) : (
-                                  Object.values(listTemplates()).map((template) => (
-                                    <div key={template.name} className="flex items-center justify-between group/template">
-                                      <button
-                                        onClick={() => applyTemplate(template.name, dIndex)}
-                                        className="flex-grow text-left px-2 py-1.5 hover:bg-blue-50 rounded text-xs font-bold text-zinc-700"
-                                      >
-                                        {template.name}
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (confirm(`Radera mall "${template.name}"?`)) {
-                                            deleteTemplate(template.name);
-                                            setTemplateDropdownDay(null);
-                                          }
-                                        }}
-                                        className="opacity-0 group-hover/template:opacity-100 p-1 text-red-500 hover:text-red-700"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          )}
                         </div>
                         <button
                           onClick={() => {
@@ -3957,6 +3906,158 @@ Lätt armhävningspåminnelse
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Template Modal */}
+      {templateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120]" onClick={() => setTemplateModal(null)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-zinc-50 p-4 border-b border-zinc-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-zinc-700 flex items-center gap-2">
+                <FileText size={20} />
+                {templateModal.mode === 'save' ? 'Spara mall' : 'Mallar'}
+              </h3>
+              <button onClick={() => setTemplateModal(null)} className="text-zinc-400 hover:text-zinc-900">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {templateModal.mode === 'save' ? (
+                /* Save template form */
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Mallnamn</label>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={templateSaveName}
+                    onChange={(e) => setTemplateSaveName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && templateSaveName.trim()) {
+                        saveTemplate(templateSaveName.trim(), templateModal.dayIndex);
+                        setTemplateModal(null);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="T.ex. Standarddag, Lördag, Jobbdag..."
+                  />
+                  <div className="flex justify-end gap-2 mt-4">
+                    <button
+                      onClick={() => setTemplateModal({ ...templateModal, mode: 'manage' })}
+                      className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900"
+                    >
+                      Tillbaka
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (templateSaveName.trim()) {
+                          saveTemplate(templateSaveName.trim(), templateModal.dayIndex);
+                          setTemplateModal(null);
+                        }
+                      }}
+                      disabled={!templateSaveName.trim()}
+                      className="px-4 py-2 bg-zinc-900 text-white rounded-md text-sm font-bold hover:bg-black disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      Spara
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Template management view */
+                <div className="space-y-3">
+                  {/* Actions */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => { setTemplateSaveName(''); setTemplateModal({ ...templateModal, mode: 'save' }); }}
+                      className="flex items-center gap-2 px-3 py-2.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-xs font-bold text-zinc-700 transition-colors"
+                    >
+                      <Plus size={14} />
+                      Spara som mall
+                    </button>
+                    <button
+                      onClick={() => {
+                        saveAsDefaultTemplate(templateModal.dayIndex);
+                        setTemplateModal(null);
+                      }}
+                      className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-xs font-bold text-amber-700 transition-colors"
+                    >
+                      <Star size={14} />
+                      Sätt som veckomall
+                    </button>
+                  </div>
+
+                  {/* Current default template info */}
+                  {(() => {
+                    const def = getDefaultTemplate();
+                    return def ? (
+                      <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        <div>
+                          <div className="text-xs font-bold text-amber-700">Veckomall aktiv</div>
+                          <div className="text-[10px] text-amber-600">{def.name} ({def.blocks?.length || 0} block)</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            localStorage.removeItem(DEFAULT_TEMPLATE_KEY);
+                            if (authUser && firestoreLoadedRef.current) {
+                              const templates = listTemplates();
+                              saveTemplates({ templates, defaultTemplate: null }).catch(err => console.error(err));
+                            }
+                            setTemplateModal({ ...templateModal }); // force re-render
+                          }}
+                          className="text-xs text-amber-600 hover:text-amber-800 font-bold"
+                        >
+                          Rensa
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2">
+                        <div className="text-xs text-zinc-400">Ingen veckomall. Nya veckor startar tomma.</div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Saved templates */}
+                  <div>
+                    <div className="text-xs font-bold text-zinc-400 uppercase mb-2">Sparade mallar</div>
+                    {Object.keys(listTemplates()).length === 0 ? (
+                      <div className="text-xs text-zinc-400 italic py-4 text-center">Inga sparade mallar ännu</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {Object.values(listTemplates()).map((template) => (
+                          <div key={template.name} className="flex items-center justify-between bg-white border border-zinc-200 rounded-lg px-3 py-2 hover:border-zinc-300 transition-colors group/tpl">
+                            <div className="flex-grow">
+                              <div className="text-sm font-bold text-zinc-700">{template.name}</div>
+                              <div className="text-[10px] text-zinc-400">{template.blocks?.length || 0} block · {template.createdAt ? new Date(template.createdAt).toLocaleDateString('sv-SE') : ''}</div>
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => {
+                                  applyTemplate(template.name, templateModal.dayIndex);
+                                  setTemplateModal(null);
+                                }}
+                                className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs font-bold transition-colors"
+                              >
+                                Använd
+                              </button>
+                              <button
+                                onClick={() => {
+                                  deleteTemplate(template.name);
+                                  setTemplateModal({ ...templateModal }); // force re-render
+                                }}
+                                className="p-1 text-zinc-300 hover:text-red-500 transition-colors opacity-0 group-hover/tpl:opacity-100"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
