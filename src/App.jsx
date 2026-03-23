@@ -925,7 +925,7 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
           className="w-full bg-zinc-50 border border-zinc-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
         />
         {showTaskDropdown && taskSuggestions.length > 0 && taskName && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
+          <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-zinc-200 rounded shadow-lg max-h-40 overflow-y-auto">
             {taskSuggestions.map((task, idx) => (
               <button
                 key={idx}
@@ -943,7 +943,7 @@ function ProjectTaskInput({ categoryId, initialProject = '', initialTask = '', p
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 justify-end">
+      <div className="flex gap-2 justify-end relative z-[60]">
         <button
           onClick={onCancel}
           className="px-4 py-2 text-sm font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
