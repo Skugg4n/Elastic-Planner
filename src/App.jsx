@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.22.1';
+const APP_VERSION = '1.23.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -1841,6 +1841,38 @@ export default function ElasticPlanner() {
     const interval = setInterval(check, 20000);
     return () => clearInterval(interval);
   }, [notificationsEnabled, calendar, isCurrentWeek, categories, currentWeekIndex]);
+
+  // Push upcoming planned blocks to the service worker so it can trigger
+  // notifications via the Notification Triggers API (works even when the
+  // PWA window/tab is closed on supporting browsers).
+  useEffect(() => {
+    if (!notificationsEnabled) return;
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.ready.then((reg) => {
+      const now = Date.now();
+      const blocks = [];
+      calendar.filter(b => b.status === 'planned').forEach((b) => {
+        const date = getDateForDay(currentWeekIndex, b.day);
+        if (!date) return;
+        const hours = Math.floor(b.start);
+        const mins = Math.round((b.start - hours) * 60);
+        const when = new Date(date);
+        when.setHours(hours, mins, 0, 0);
+        const ts = when.getTime();
+        if (ts <= now) return;
+        blocks.push({
+          timestamp: ts,
+          label: b.label,
+          duration: b.duration,
+          category: categories[b.type]?.label || '',
+          tag: `${currentWeekIndex}-${b.day}-${b.start}-${b.label}`,
+        });
+      });
+      if (reg.active) {
+        reg.active.postMessage({ type: 'schedule-notifications', blocks });
+      }
+    }).catch(() => {});
+  }, [notificationsEnabled, calendar, currentWeekIndex, categories]);
 
   const sendTestNotification = async () => {
     if (typeof Notification === 'undefined') {

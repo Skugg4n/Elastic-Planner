@@ -1,0 +1,20 @@
+{
+  "name": "Elastic Planner",
+  "short_name": "Planner",
+  "description": "Flexibel veckoplanering med mål och tidbudget",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "lang": "sv",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
