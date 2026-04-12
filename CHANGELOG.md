@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.2] - 2026-04-12
+
+### Changed
+- **Tydligare dag-status-knapp:** Ersatte emojis (`·`/🌤️/🏖️) med text-badges `J` (Jobbdag, grå), `H` (Halvdag, amber) och `L` (Ledig, rosa). Alltid synlig med färgkodad bakgrund — betydligt lättare att förstå än emoji-varianten.
+
 ## [1.21.1] - 2026-04-12
 
 ### Fixed
