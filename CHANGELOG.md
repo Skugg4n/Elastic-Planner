@@ -5,6 +5,21 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-04-12
+
+### Added
+- **PWA-stöd (installerbar app):** Elastic Planner kan nu installeras som en riktig app via Chrome/Edge/Safari.
+  - Ny `manifest.webmanifest` med app-metadata, ikon och standalone-läge
+  - Service worker (`sw.js`) för offline-cache av app-shell
+  - Registreras automatiskt i `main.jsx`
+  - `apple-touch-icon` och `apple-mobile-web-app-*` meta-taggar för iOS-support
+- **Bakgrundsnotiser via Notification Triggers:** När notiser är på postar appen upcoming planned-block till service workern, som schemalägger OS-nivå-notiser via `TimestampTrigger` API:t. Fungerar i installerade PWA:s på Chrome/Edge desktop även när appen är stängd. Fallback till in-tab-interval om webbläsaren inte stödjer Triggers (Safari/Firefox).
+
+### Installation
+- **macOS (Chrome/Edge):** Öppna appen i Chrome → klicka install-ikonen i adressfältet (eller Meny → "Installera Elastic Planner…")
+- **iPhone (Safari):** Öppna i Safari → Dela → "Lägg till på hemskärmen"
+- **Android:** Chrome → Meny → "Installera app"
+
 ## [1.22.1] - 2026-04-12
 
 ### Fixed
