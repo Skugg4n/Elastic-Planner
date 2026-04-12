@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.21.3';
+const APP_VERSION = '1.22.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -1443,7 +1443,15 @@ export default function ElasticPlanner() {
   const [bankAddLabel, setBankAddLabel] = useState('');
   const [bankAddDuration, setBankAddDuration] = useState(1);
   const [bankAddCategory, setBankAddCategory] = useState('life');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
+    return localStorage.getItem('ep_notifications_enabled') === '1' && Notification.permission === 'granted';
+  });
+  const notifiedBlocksRef = useRef(new Set());
+
+  useEffect(() => {
+    localStorage.setItem('ep_notifications_enabled', notificationsEnabled ? '1' : '0');
+  }, [notificationsEnabled]);
   const [undoToast, setUndoToast] = useState(null);
 
   // --- Auth & Firestore sync ---
@@ -1806,24 +1814,47 @@ export default function ElasticPlanner() {
 
   useEffect(() => {
     if (!notificationsEnabled) return;
-    const interval = setInterval(() => {
+    const check = () => {
       const now = new Date();
-      const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
+      const currentTimeDecimal = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
       const todayDayIndex = (now.getDay() + 6) % 7;
       if (!isCurrentWeek) return;
 
       calendar.filter(b => b.day === todayDayIndex && b.status === 'planned').forEach(block => {
-        const diff = block.start - currentTimeDecimal;
-        if (diff > 0 && diff <= 1/60) { // within 1 minute
-          new Notification(`⏰ ${block.label}`, {
-            body: `${block.duration}h ${categories[block.type]?.label || ''}`,
-            icon: '⏰'
-          });
+        const diffSeconds = (block.start - currentTimeDecimal) * 3600;
+        // Fire if block starts within next 30s OR started up to 30s ago, and not yet notified
+        if (diffSeconds >= -30 && diffSeconds <= 30) {
+          const key = `${currentWeekIndex}-${block.day}-${block.start}-${block.label}`;
+          if (!notifiedBlocksRef.current.has(key)) {
+            notifiedBlocksRef.current.add(key);
+            try {
+              new Notification(`⏰ ${block.label}`, {
+                body: `${block.duration}h ${categories[block.type]?.label || ''}`,
+                tag: key,
+              });
+            } catch (e) { /* ignore */ }
+          }
         }
       });
-    }, 60000);
+    };
+    check();
+    const interval = setInterval(check, 20000);
     return () => clearInterval(interval);
-  }, [notificationsEnabled, calendar, isCurrentWeek, categories]);
+  }, [notificationsEnabled, calendar, isCurrentWeek, categories, currentWeekIndex]);
+
+  const sendTestNotification = async () => {
+    if (typeof Notification === 'undefined') {
+      alert('Denna webbläsare stödjer inte notifikationer.');
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      alert('Notifikationer är inte tillåtna. Aktivera dem i webbläsarens inställningar.');
+      return;
+    }
+    new Notification('🔔 Elastic Planner — test', { body: 'Notifikationer fungerar!' });
+  };
 
   const updateCurrentWeek = (newCalendar, newPoints) => {
     setWeeksData((prev) => {
@@ -4292,22 +4323,33 @@ Lätt armhävningspåminnelse
 
               {/* Notifications Section */}
               <h4 className="text-xs font-bold uppercase text-zinc-400 mb-3">Notifikationer</h4>
-              <div className="flex items-center justify-between py-3 bg-zinc-50 px-3 rounded-lg mb-4">
-                <span className="text-sm font-bold text-zinc-700">Notiser vid passstart</span>
-                <button onClick={async () => {
-                  if (!notificationsEnabled) {
-                    const perm = await Notification.requestPermission();
-                    if (perm === 'granted') setNotificationsEnabled(true);
-                  } else {
-                    setNotificationsEnabled(false);
-                  }
-                }} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
-                  notificationsEnabled
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-zinc-300 text-zinc-700 hover:bg-zinc-400'
-                }`}>
-                  {notificationsEnabled ? '🔔 På' : '🔕 Av'}
-                </button>
+              <div className="py-3 bg-zinc-50 px-3 rounded-lg mb-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-zinc-700">Notiser vid passstart</span>
+                  <div className="flex gap-2">
+                    <button onClick={sendTestNotification} className="px-2 py-1.5 rounded text-xs font-bold bg-zinc-200 text-zinc-700 hover:bg-zinc-300 transition-all" title="Skicka en testnotis">
+                      Testa
+                    </button>
+                    <button onClick={async () => {
+                      if (!notificationsEnabled) {
+                        const perm = await Notification.requestPermission();
+                        if (perm === 'granted') setNotificationsEnabled(true);
+                        else alert('Notifikationer blockerade. Aktivera i webbläsarens inställningar.');
+                      } else {
+                        setNotificationsEnabled(false);
+                      }
+                    }} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                      notificationsEnabled
+                        ? 'bg-green-500 text-white hover:bg-green-600'
+                        : 'bg-zinc-300 text-zinc-700 hover:bg-zinc-400'
+                    }`}>
+                      {notificationsEnabled ? '🔔 På' : '🔕 Av'}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-zinc-500 leading-snug">
+                  Visas vid start av planerade pass. Fungerar bara när appen är öppen i en flik. Inställningen sparas mellan sessioner.
+                </p>
               </div>
 
               <hr className="my-4" />

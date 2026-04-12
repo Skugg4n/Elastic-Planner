@@ -5,6 +5,18 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-04-12
+
+### Fixed
+- **Notifikationer fungerar nu på riktigt:**
+  - `notificationsEnabled` persisteras i localStorage (återställs inte vid reload)
+  - Bredare tidsfönster (±30s) istället för ömtåliga 1 min
+  - `notifiedBlocksRef` hindrar dubbelnotiser för samma block
+  - Interval kontrollerar var 20:e sekund för bättre precision
+  - `try/catch` runt `new Notification()` så fel inte kraschar
+- **Testknapp:** Ny "Testa"-knapp bredvid toggeln skickar en direkt testnotis så man kan verifiera att det fungerar.
+- **Förtydligad hjälptext:** Lades till info om att notiser bara fungerar när appen är öppen i en flik.
+
 ## [1.21.3] - 2026-04-12
 
 ### Changed
