@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.21.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -3009,8 +3009,8 @@ Lätt armhävningspåminnelse
                         {hasTrainingFire && (
                           <span className="text-lg">🔥</span>
                         )}
-                        <button onClick={() => cycleDayStatus(dIndex)} className="text-[10px] opacity-50 hover:opacity-100 transition-opacity" title="Normal → Halvdag → Ledig">
-                          {(dayStatuses[dIndex] || 'normal') === 'half' ? '🌤️' : (dayStatuses[dIndex] || 'normal') === 'off' ? '🏖️' : ''}
+                        <button onClick={() => cycleDayStatus(dIndex)} className="text-[11px] leading-none px-1 opacity-30 hover:opacity-100 transition-opacity" title="Normal → Halvdag → Ledig">
+                          {(dayStatuses[dIndex] || 'normal') === 'half' ? '🌤️' : (dayStatuses[dIndex] || 'normal') === 'off' ? '🏖️' : '·'}
                         </button>
                       </div>
                       <div className="flex items-center gap-1">
