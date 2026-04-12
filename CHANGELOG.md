@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.1] - 2026-04-12
+
+### Fixed
+- **Veckomålet pro-rateras nu efter L/H-dagar:** Header-pillarna ("v: -1h" mm) använde råmålet (t.ex. 24h) även om veckan hade en Ledig eller Halvdag markerad. Nu multipliceras målet med (effektiva vardagar / 5), så en vecka med en L-dag visar mål 19.2h istället för 24h. Tidigare var det bara "totalt"-beräkningen som pro-raterade korrekt.
+
 ## [1.22.0] - 2026-04-12
 
 ### Fixed

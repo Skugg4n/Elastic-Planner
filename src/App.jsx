@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.22.0';
+const APP_VERSION = '1.22.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -2918,12 +2918,24 @@ Lätt armhävningspåminnelse
             </div>
           </div>
           <div className="flex gap-6 items-center">
-            {Object.values(categories).map(cat => {
-              const done = Math.round(calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0) * 10) / 10;
-              const total = Math.round(calendar.filter(b => b.type === cat.id).reduce((a, b) => a + b.duration, 0) * 10) / 10;
-              if (total === 0 && !cat.targetHoursPerWeek) return null;
-              return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={cat.targetHoursPerWeek} warnBelowTarget={!!cat.targetHoursPerWeek} cumFlex={cumulativeFlex[cat.id]} />;
-            })}
+            {(() => {
+              // Pro-rate current week's target by effective weekdays (Mon-Fri, accounting for half/off days)
+              let effectiveWeekdays = 0;
+              for (let d = 0; d <= 4; d++) {
+                const s = dayStatuses[d] || 'normal';
+                effectiveWeekdays += s === 'off' ? 0 : s === 'half' ? 0.5 : 1;
+              }
+              const dayFactor = effectiveWeekdays / 5;
+              return Object.values(categories).map(cat => {
+                const done = Math.round(calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0) * 10) / 10;
+                const total = Math.round(calendar.filter(b => b.type === cat.id).reduce((a, b) => a + b.duration, 0) * 10) / 10;
+                if (total === 0 && !cat.targetHoursPerWeek) return null;
+                const effectiveTarget = cat.targetHoursPerWeek
+                  ? Math.round(cat.targetHoursPerWeek * dayFactor * 10) / 10
+                  : null;
+                return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={effectiveTarget} warnBelowTarget={!!cat.targetHoursPerWeek} cumFlex={cumulativeFlex[cat.id]} />;
+              });
+            })()}
             {totalWeekPoints > 0 && (
               <div className="flex flex-col items-end">
                 <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
