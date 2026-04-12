@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.21.2';
+const APP_VERSION = '1.21.3';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -1601,13 +1601,23 @@ export default function ElasticPlanner() {
   const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {}, dayStatuses: {} };
   const { calendar, points, dayStatuses = {} } = currentData;
 
+  const getEffectiveDayStatus = (dayIndex) => {
+    if (dayStatuses[dayIndex]) return dayStatuses[dayIndex];
+    return dayIndex >= 5 ? 'off' : 'normal';
+  };
+
   const cycleDayStatus = (dayIndex) => {
-    const current = dayStatuses[dayIndex] || 'normal';
+    const current = getEffectiveDayStatus(dayIndex);
     const next = current === 'normal' ? 'half' : current === 'half' ? 'off' : 'normal';
+    const isWeekendDefault = dayIndex >= 5;
     pushUndo(weeksData);
     const newStatuses = { ...dayStatuses };
-    if (next === 'normal') delete newStatuses[dayIndex];
-    else newStatuses[dayIndex] = next;
+    // For weekdays, 'normal' is implicit; for weekends, 'off' is implicit.
+    if ((next === 'normal' && !isWeekendDefault) || (next === 'off' && isWeekendDefault)) {
+      delete newStatuses[dayIndex];
+    } else {
+      newStatuses[dayIndex] = next;
+    }
     const newData = { ...weeksData };
     newData[currentWeekIndex] = { ...newData[currentWeekIndex], dayStatuses: newStatuses };
     setWeeksData(newData);
@@ -3010,11 +3020,11 @@ Lätt armhävningspåminnelse
                           <span className="text-lg">🔥</span>
                         )}
                         <button onClick={() => cycleDayStatus(dIndex)} className={`text-[10px] font-bold leading-none px-1 py-0.5 rounded border transition-all ${
-                          (dayStatuses[dIndex] || 'normal') === 'half' ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                          (dayStatuses[dIndex] || 'normal') === 'off' ? 'bg-rose-100 text-rose-700 border-rose-300' :
+                          getEffectiveDayStatus(dIndex) === 'half' ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                          getEffectiveDayStatus(dIndex) === 'off' ? 'bg-rose-100 text-rose-700 border-rose-300' :
                           'bg-transparent text-zinc-400 border-zinc-300 opacity-40 hover:opacity-100'
                         }`} title="Jobbdag → Halvdag → Ledig">
-                          {(dayStatuses[dIndex] || 'normal') === 'half' ? 'H' : (dayStatuses[dIndex] || 'normal') === 'off' ? 'L' : 'J'}
+                          {getEffectiveDayStatus(dIndex) === 'half' ? 'H' : getEffectiveDayStatus(dIndex) === 'off' ? 'L' : 'J'}
                         </button>
                       </div>
                       <div className="flex items-center gap-1">
