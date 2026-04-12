@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.3] - 2026-04-12
+
+### Changed
+- **Helger visas som `L` (Ledig) som default:** Lördag och söndag markeras automatiskt som lediga dagar i veckovyn. Går fortfarande att cykla manuellt (J → H → L) om man faktiskt jobbar på helgen. 24h-räknaren har redan tidigare bara räknat Mån–Fre, så detta är en visuell förtydligande.
+
 ## [1.21.2] - 2026-04-12
 
 ### Changed
