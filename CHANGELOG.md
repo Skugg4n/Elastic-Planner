@@ -5,6 +5,14 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.1] - 2026-04-19
+
+### Fixed
+- **Parallella block fastnade i halvbredd:** När ett parallellblock flyttades/raderades men partnerns `parallelId` låg kvar, renderades blocket utan left/right → smal och odraggbar. Nu sätts `isParallel = true` bara om partner faktiskt finns.
+
+### Changed
+- **Lådan visar projekt/uppgift:** Block i Lådan visar nu Projekt / Uppgift under etiketten (tex "IPT / Översättning" under "Bok") istället för bara kategorin och timmar.
+
 ## [1.23.0] - 2026-04-12
 
 ### Added

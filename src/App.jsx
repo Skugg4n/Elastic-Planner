@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.23.0';
+const APP_VERSION = '1.23.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -3212,10 +3212,10 @@ Lätt armhävningspåminnelse
                         let parallelPosition = null;
 
                         if (block.parallelId) {
-                          isParallel = true;
                           // Find the partner block to determine order
                           const partner = calendar.find(b => b.id !== block.id && b.parallelId === block.parallelId && b.day === dIndex);
                           if (partner) {
+                            isParallel = true;
                             // Compare by start time, then by ID for tie-breaking
                             if (block.start < partner.start || (block.start === partner.start && block.id < partner.id)) {
                               parallelPosition = 'left';
@@ -3223,6 +3223,7 @@ Lätt armhävningspåminnelse
                               parallelPosition = 'right';
                             }
                           }
+                          // If partner is missing (deleted/moved), treat as non-parallel → full width
                         }
 
                         return (
@@ -4522,7 +4523,16 @@ Lätt armhävningspåminnelse
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-move transition-all hover:scale-105 hover:shadow-md border border-white/20"
                         style={{ backgroundColor: cat.hex, color: cat.textHex }}
                       >
-                        <span className="text-xs font-bold truncate max-w-[120px]">{item.label}</span>
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-xs font-bold truncate max-w-[160px]">{item.label}</span>
+                          {(item.projectName || item.taskName) && (
+                            <span className="text-[9px] opacity-60 truncate max-w-[160px]">
+                              {item.projectName && item.taskName
+                                ? `${item.projectName} / ${item.taskName}`
+                                : item.projectName || item.taskName}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] opacity-70">{item.duration}h</span>
                         <button
                           onClick={(e) => { e.stopPropagation(); removeFromBank(item.id); }}
