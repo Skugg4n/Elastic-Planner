@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.23.1';
+const APP_VERSION = '1.23.2';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -3018,7 +3018,7 @@ Lätt armhävningspåminnelse
               {HOURS.map((h) => (
                 <div
                   key={h}
-                  className="border-b border-zinc-50 text-[10px] font-medium text-zinc-400 pr-2 pt-1 text-right"
+                  className="border-b border-zinc-200 text-[10px] font-medium text-zinc-400 pr-2 pt-1 text-right"
                   style={{ height: `${HOUR_HEIGHT}rem` }}
                 >
                   {h}:00
@@ -3142,7 +3142,7 @@ Lätt armhävningspåminnelse
                     {HOURS.map((h) => (
                       <div
                         key={h}
-                        className="border-b border-zinc-50 w-full relative"
+                        className="border-b border-zinc-200 w-full relative"
                         style={{ height: `${HOUR_HEIGHT}rem` }}
                         onDragOver={(e) => handleDragOver(e, dIndex, h)}
                       >
