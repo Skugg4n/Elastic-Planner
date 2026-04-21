@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.23.2';
+const APP_VERSION = '1.23.3';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -526,6 +526,27 @@ const migrateDayStatuses = (weeksData) => {
   return migrated;
 };
 
+// Clean up orphaned parallelIds — blocks whose partner no longer exists
+const cleanOrphanedParallelIds = (weeksData) => {
+  const migrated = {};
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    if (!weekData.calendar || weekData.calendar.length === 0) {
+      migrated[weekId] = weekData;
+      continue;
+    }
+    const calendar = weekData.calendar.map((block) => {
+      if (!block.parallelId) return block;
+      const hasPartner = weekData.calendar.some(
+        (b) => b.id !== block.id && b.parallelId === block.parallelId
+      );
+      if (!hasPartner) return { ...block, parallelId: null };
+      return block;
+    });
+    migrated[weekId] = { ...weekData, calendar };
+  }
+  return migrated;
+};
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -541,6 +562,7 @@ const getInitialWeeksData = () => {
         migrated = migrateParallelId(migrated);
         migrated = migrateCategoryColors(migrated);
         migrated = migrateDayStatuses(migrated);
+        migrated = cleanOrphanedParallelIds(migrated);
         return migrated;
       }
     } catch (e) {
@@ -2253,11 +2275,13 @@ export default function ElasticPlanner() {
       parallelId: parallelId,
     };
 
-    // Update original block to have the same parallelId
-    const updatedBlock = { ...block, parallelId: parallelId };
-
-    // Replace original block and add new block (don't run resolveCollisions for parallel blocks)
-    const newCalendar = calendar.map((b) => b.id === block.id ? updatedBlock : b);
+    // Update original block with new parallelId, and clear old partner's parallelId if any
+    const newCalendar = calendar.map((b) => {
+      if (b.id === block.id) return { ...b, parallelId: parallelId };
+      // If original block had a different parallelId, unlink the old partner
+      if (block.parallelId && b.parallelId === block.parallelId) return { ...b, parallelId: null };
+      return b;
+    });
     newCalendar.push(newBlock);
 
     updateCurrentWeek(newCalendar, points);
