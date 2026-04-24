@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.23.3';
+const APP_VERSION = '1.24.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -2581,9 +2581,10 @@ Lätt armhävningspåminnelse
   };
 
   const handleDragStart = (e, block) => {
-    setDraggedBlock(block);
+    const isDuplicate = e.altKey;
+    setDraggedBlock({ ...block, _isDuplicate: isDuplicate });
     setSelectedBlockIds([]);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = isDuplicate ? 'copy' : 'move';
   };
 
   const handleDragOver = (e, dayIndex, hour) => {
@@ -2664,17 +2665,27 @@ Lätt armhävningspåminnelse
       return;
     }
 
-    // Remove parallelId when dragging (unlink from old partner)
-    const unlinkedBlock = { ...draggedBlock, parallelId: null };
+    const isDuplicate = draggedBlock._isDuplicate || e.altKey;
 
-    // Also unlink old partner if it existed
-    let newCalendar = calendar.map((b) => {
-      if (b.id === draggedBlock.id) return null; // will be re-added
-      if (draggedBlock.parallelId && b.parallelId === draggedBlock.parallelId) {
-        return { ...b, parallelId: null };
-      }
-      return b;
-    }).filter(Boolean);
+    // Remove parallelId and internal flags
+    const unlinkedBlock = { ...draggedBlock, parallelId: null };
+    delete unlinkedBlock._isDuplicate;
+
+    let newCalendar;
+    if (isDuplicate) {
+      // Alt+drag: keep original in place, create a copy with new id
+      unlinkedBlock.id = `block-${Date.now()}-${Math.random()}`;
+      newCalendar = [...calendar];
+    } else {
+      // Normal drag: remove original and unlink old partner
+      newCalendar = calendar.map((b) => {
+        if (b.id === draggedBlock.id) return null; // will be re-added
+        if (draggedBlock.parallelId && b.parallelId === draggedBlock.parallelId) {
+          return { ...b, parallelId: null };
+        }
+        return b;
+      }).filter(Boolean);
+    }
 
     if (dropIndicator.type === 'merge') {
       const target = newCalendar.find((b) => b.id === dropIndicator.targetBlockId);
