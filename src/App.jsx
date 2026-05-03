@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.24.0';
+const APP_VERSION = '1.24.1';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -2596,7 +2596,8 @@ Lätt armhävningspåminnelse
     const isBottomHalf = offsetY > rect.height / 2;
     const targetStart = isBottomHalf ? hour + 0.5 : hour;
 
-    const hoverBlock = calendar.find((b) => b.day === dayIndex && b.start <= targetStart && b.start + b.duration > targetStart);
+    // Exclude the dragged block itself so you can drop within its own area
+    const hoverBlock = calendar.find((b) => b.id !== draggedBlock.id && b.day === dayIndex && b.start <= targetStart && b.start + b.duration > targetStart);
 
     if (hoverBlock && hoverBlock.type === draggedBlock.type && hoverBlock.id !== draggedBlock.id) {
       setDropIndicator({ day: dayIndex, hour: hoverBlock.start, type: 'merge', targetBlockId: hoverBlock.id });
