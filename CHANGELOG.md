@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.2] - 2026-05-03
+
+### Fixed
+- **Block kan nu verkligen dras inom sin egen area:** Förra fixen (v1.24.1) fixade bara `handleDragOver`. Det egentliga problemet var att `isOccupied`-checken i slot-renderingen inkluderade det dragna blocket, vilket gjorde att inga drop-targets renderades under blockets area. Nu exkluderas det dragna blocket och occuperade slots har `onDragOver` för korrekt drop-position.
+
 ## [1.24.1] - 2026-05-03
 
 ### Fixed
