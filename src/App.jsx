@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.24.1';
+const APP_VERSION = '1.24.2';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -3184,8 +3184,9 @@ Lätt armhävningspåminnelse
                       >
                         {[0, 0.5].map((offset) => {
                           const slotStart = h + offset;
-                          const isOccupied = calendar.some((b) => b.day === dIndex && b.start <= slotStart && b.start + b.duration > slotStart);
-                          if (isOccupied) return <div key={offset} style={{ height: `${HOUR_HEIGHT / 2}rem` }} />;
+                          // Exclude the currently dragged block so its slots remain droppable
+                          const isOccupied = calendar.some((b) => b.day === dIndex && b.start <= slotStart && b.start + b.duration > slotStart && (!draggedBlock || b.id !== draggedBlock.id));
+                          if (isOccupied) return <div key={offset} style={{ height: `${HOUR_HEIGHT / 2}rem` }} onDragOver={(e) => handleDragOver(e, dIndex, h)} />;
                           return (
                             <button
                               key={offset}
