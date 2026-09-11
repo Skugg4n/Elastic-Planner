@@ -1,6 +1,6 @@
 // Elastic Planner Service Worker
-const CACHE_VERSION = 'ep-cache-v1';
-const APP_SHELL = ['/', '/index.html', '/favicon.svg', '/manifest.webmanifest'];
+const CACHE_VERSION = 'ep-cache-v2';
+const APP_SHELL = ['/', '/index.html', '/icons/favicon-32.png', '/icons/icon-192.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -53,8 +53,8 @@ self.addEventListener('message', (event) => {
           body: `${b.duration}h ${b.category || ''}`.trim(),
           tag: b.tag,
           showTrigger: new TimestampTrigger(when),
-          icon: '/favicon.svg',
-          badge: '/favicon.svg',
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
         }).catch(() => {});
       } catch (e) { /* ignore */ }
     }
