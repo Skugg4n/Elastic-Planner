@@ -5,6 +5,13 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-09-11
+
+### Changed
+- **Inline-redigering visar Projekt och Uppgift** i stället för beskrivning (beskrivning används sällan, den finns kvar i detaljdialogen). Namn, projekt och uppgift redigeras direkt i blocket; Enter sparar i alla fält. Projekt/uppgift matar projekthistoriken precis som dialogen gör.
+- **Ny app-ikon:** Olas egen ikon (kalender med elastiska band, gjord i ChatGPT) ersätter SVG-monogrammet. Riktiga PNG-storlekar i `public/icons/`: 192/512 för PWA (any + maskable med full blå platta), 180 apple-touch-icon, 16/32 favicon. macOS kunde inte använda SVG som dock-ikon, därav den grå bokstaven "P" tidigare. Service worker-cache bumpad till v2 och notisikonen bytt.
+- `theme-color` följer ikonens blå (#2563eb).
+
 ## [1.25.0] - 2026-09-11
 
 ### Fixed

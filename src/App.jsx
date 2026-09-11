@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.25.0';
+const APP_VERSION = '1.26.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -3395,7 +3395,14 @@ Lätt armhävningspåminnelse
                             onResizeStart={handleResizeStart}
                             categories={categories}
                             gridStartHour={gridStart}
-                            onInlineSave={(fields) => updateBlockFields(block.id, fields)}
+                            onInlineSave={(fields) => {
+                              const projectName = (fields.projectName || '').trim() || null;
+                              const taskName = (fields.taskName || '').trim() || null;
+                              updateBlockFields(block.id, { label: fields.label, projectName, taskName });
+                              if (projectName && taskName) {
+                                setProjectHistory((prev) => updateProjectHistoryRecord(prev, block.type, projectName, taskName));
+                              }
+                            }}
                             onCancelEdit={() => setEditingLabelId(null)}
                             onAction={(action) => {
                               if (action === 'inline') {
@@ -4955,37 +4962,51 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
   // Inline editing: draft lives in a ref so it can be committed when editing ends
   // for any reason (Enter, blur, click outside) but not after Escape.
   const [localLabel, setLocalLabel] = useState(block.label);
-  const [localDesc, setLocalDesc] = useState(block.description || '');
-  const draftRef = useRef({ label: block.label, description: block.description || '', dirty: false });
+  const [localProject, setLocalProject] = useState(block.projectName || '');
+  const [localTask, setLocalTask] = useState(block.taskName || '');
+  const draftRef = useRef({ label: block.label, projectName: block.projectName || '', taskName: block.taskName || '', dirty: false });
   const inputRef = useRef(null);
-  const showDescField = block.duration >= 1;
+  // Project/task fields need room: only for blocks of at least 1 h
+  const showProjectFields = block.duration >= 1;
+
+  const draftFromBlock = () => ({
+    label: block.label || '',
+    projectName: block.projectName || '',
+    taskName: block.taskName || '',
+    dirty: false,
+  });
+  const emitSave = (d) => {
+    if (onInlineSave) onInlineSave({ label: d.label, projectName: d.projectName, taskName: d.taskName });
+  };
 
   useEffect(() => {
     if (!isEditing) return;
-    const startLabel = block.label || '';
-    const startDesc = block.description || '';
-    setLocalLabel(startLabel);
-    setLocalDesc(startDesc);
-    draftRef.current = { label: startLabel, description: startDesc, dirty: false };
+    const start = draftFromBlock();
+    setLocalLabel(start.label);
+    setLocalProject(start.projectName);
+    setLocalTask(start.taskName);
+    draftRef.current = start;
     if (inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
     return () => {
       const d = draftRef.current;
-      if (d.dirty && onInlineSave) onInlineSave({ label: d.label, description: d.description });
+      if (d.dirty) emitSave(d);
     };
   }, [isEditing]);
 
   const updateDraft = (patch) => {
     const next = { ...draftRef.current, ...patch };
-    next.dirty = next.label !== (block.label || '') || next.description !== (block.description || '');
+    next.dirty = next.label !== (block.label || '')
+      || next.projectName !== (block.projectName || '')
+      || next.taskName !== (block.taskName || '');
     draftRef.current = next;
   };
 
   const commitInline = () => {
     const d = draftRef.current;
-    if (d.dirty && onInlineSave) onInlineSave({ label: d.label, description: d.description });
+    if (d.dirty) emitSave(d);
     draftRef.current = { ...d, dirty: false };
     if (onCancelEdit) onCancelEdit();
   };
@@ -5000,7 +5021,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
     if (e.key === 'Escape') {
       e.preventDefault();
       cancelInline();
-    } else if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey)) {
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       commitInline();
     }
@@ -5080,15 +5101,26 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
                     placeholder="Namn"
                     className="w-full bg-white/20 text-[10px] font-bold uppercase px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white placeholder:text-current placeholder:opacity-40"
                   />
-                  {showDescField && (
-                    <textarea
-                      value={localDesc}
-                      onChange={(e) => { setLocalDesc(e.target.value); updateDraft({ description: e.target.value }); }}
-                      onKeyDown={handleInlineKeyDown}
-                      placeholder="Beskrivning"
-                      rows={Math.max(1, Math.min(6, Math.floor(block.duration * 2) - 1))}
-                      className="w-full bg-white/20 text-[9px] leading-tight px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white resize-none placeholder:text-current placeholder:opacity-40"
-                    />
+                  {showProjectFields && (
+                    <>
+                      <input
+                        type="text"
+                        value={localProject}
+                        onChange={(e) => { setLocalProject(e.target.value); updateDraft({ projectName: e.target.value }); }}
+                        onKeyDown={handleInlineKeyDown}
+                        placeholder="Projekt"
+                        list="project-history-list"
+                        className="w-full bg-white/20 text-[9px] leading-tight px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white placeholder:text-current placeholder:opacity-40"
+                      />
+                      <input
+                        type="text"
+                        value={localTask}
+                        onChange={(e) => { setLocalTask(e.target.value); updateDraft({ taskName: e.target.value }); }}
+                        onKeyDown={handleInlineKeyDown}
+                        placeholder="Uppgift"
+                        className="w-full bg-white/20 text-[9px] leading-tight px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white placeholder:text-current placeholder:opacity-40"
+                      />
+                    </>
                   )}
                 </div>
               ) : (
@@ -5152,7 +5184,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
                   onAction('inline');
                 }}
                 className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-white/20 text-current"
-                title="Redigera namn och beskrivning"
+                title="Redigera namn, projekt och uppgift"
               >
                 <Edit3 size={10} />
               </button>
