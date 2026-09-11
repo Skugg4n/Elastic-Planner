@@ -21,6 +21,24 @@ function userDoc(collection, docId) {
 
 // ── Week data ──
 
+/**
+ * Pick the persisted parts of a week object. Only fields present in the
+ * source are returned, so an old Firestore doc without dayStatuses does not
+ * overwrite a local value with an empty object.
+ */
+function pickWeekFields(data) {
+  if (!data || typeof data !== "object") return null;
+  const out = {};
+  if (Array.isArray(data.calendar)) out.calendar = data.calendar;
+  if (data.points && typeof data.points === "object") out.points = data.points;
+  if (data.dayStatuses && typeof data.dayStatuses === "object") out.dayStatuses = data.dayStatuses;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Load a week. Returns { calendar, points?, dayStatuses? } or null when
+ * nothing is stored for that week.
+ */
 export async function loadWeek(weekId) {
   const id = String(weekId);
 
@@ -29,7 +47,7 @@ export async function loadWeek(weekId) {
     try {
       const snap = await getDoc(userDoc("weeks", id));
       if (snap.exists()) {
-        return snap.data().calendar || [];
+        return pickWeekFields(snap.data());
       }
     } catch (err) {
       console.warn("Firestore read failed, falling back to localStorage:", err);
@@ -40,17 +58,27 @@ export async function loadWeek(weekId) {
   return loadWeekFromLocalStorage(id);
 }
 
-export async function saveWeek(weekId, calendar) {
+/**
+ * Save a whole week object ({ calendar, points, dayStatuses }).
+ * Accepts a bare calendar array for backwards compatibility.
+ */
+export async function saveWeek(weekId, weekData) {
   const id = String(weekId);
+  const data = Array.isArray(weekData) ? { calendar: weekData } : weekData;
+  const payload = {
+    calendar: data.calendar || [],
+    points: data.points || {},
+    dayStatuses: data.dayStatuses || {},
+  };
 
   // Always save to localStorage (cache)
-  saveWeekToLocalStorage(id, calendar);
+  saveWeekToLocalStorage(id, payload);
 
   // Save to Firestore if logged in
   if (currentUid) {
     try {
       await setDoc(userDoc("weeks", id), {
-        calendar,
+        ...payload,
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
@@ -189,6 +217,8 @@ export async function migrateFromLocalStorage() {
       if (Array.isArray(calendar) && calendar.length > 0) {
         await setDoc(userDoc("weeks", String(weekId)), {
           calendar,
+          points: weekData.points || {},
+          dayStatuses: weekData.dayStatuses || {},
           updatedAt: serverTimestamp(),
         });
         weekCount++;
@@ -258,23 +288,26 @@ export async function hasFirestoreData() {
 function loadWeekFromLocalStorage(weekId) {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [];
+    if (!raw) return null;
     const data = JSON.parse(raw);
     const weeksData = data.weeksData || data;
     const week = weeksData[weekId];
-    if (!week) return [];
-    return week.calendar || week || [];
+    if (!week) return null;
+    if (Array.isArray(week)) return { calendar: week };
+    return pickWeekFields(week);
   } catch (e) {
-    return [];
+    return null;
   }
 }
 
-function saveWeekToLocalStorage(weekId, calendar) {
+function saveWeekToLocalStorage(weekId, weekData) {
   try {
     const raw = localStorage.getItem(LS_KEY);
     const data = raw ? JSON.parse(raw) : {};
     const weeksData = data.weeksData || data;
-    weeksData[weekId] = { calendar };
+    const existing = weeksData[weekId] && !Array.isArray(weeksData[weekId]) ? weeksData[weekId] : {};
+    // Merge so fields we don't know about survive
+    weeksData[weekId] = { ...existing, ...weekData };
     if (data.weeksData) {
       data.weeksData = weeksData;
       localStorage.setItem(LS_KEY, JSON.stringify(data));

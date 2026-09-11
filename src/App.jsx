@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.24.2';
+const APP_VERSION = '1.25.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -570,6 +570,13 @@ const getInitialWeeksData = () => {
     }
   }
   return { 1: generateStandardWeek(1) };
+};
+
+// Merge a week loaded from Firestore/localStorage into the week already in state.
+// Fields missing in the loaded doc (old docs lack points/dayStatuses) keep their local value.
+const mergeLoadedWeek = (prevWeek, loaded) => {
+  if (!loaded) return prevWeek;
+  return { ...(prevWeek || { calendar: [], points: {}, dayStatuses: {} }), ...loaded };
 };
 
 const getInitialWeekIndex = () => {
@@ -1465,6 +1472,13 @@ export default function ElasticPlanner() {
   const [bankAddLabel, setBankAddLabel] = useState('');
   const [bankAddDuration, setBankAddDuration] = useState(1);
   const [bankAddCategory, setBankAddCategory] = useState('life');
+  // Show hours 00-07 in full height above 07:00 (for night shifts etc)
+  const [showEarlyHours, setShowEarlyHours] = useState(() => {
+    try { return localStorage.getItem('ep_show_early_hours') === '1'; } catch (e) { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('ep_show_early_hours', showEarlyHours ? '1' : '0'); } catch (e) { /* ignore */ }
+  }, [showEarlyHours]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
     return localStorage.getItem('ep_notifications_enabled') === '1' && Notification.permission === 'granted';
@@ -1534,13 +1548,16 @@ export default function ElasticPlanner() {
               }
             }
             // Load current week from Firestore
-            const fsWeek = await loadWeek(currentWeekIndex);
-            if (fsWeek && fsWeek.length > 0) {
-              setWeeksData(prev => ({
-                ...prev,
-                [currentWeekIndex]: { ...prev[currentWeekIndex], calendar: fsWeek },
-              }));
-            }
+            const [fsWeek, fsPrevWeek] = await Promise.all([
+              loadWeek(currentWeekIndex),
+              currentWeekIndex > 1 ? loadWeek(currentWeekIndex - 1) : Promise.resolve(null),
+            ]);
+            setWeeksData(prev => {
+              const next = { ...prev };
+              if (fsWeek) next[currentWeekIndex] = mergeLoadedWeek(prev[currentWeekIndex], fsWeek);
+              if (fsPrevWeek) next[currentWeekIndex - 1] = mergeLoadedWeek(prev[currentWeekIndex - 1], fsPrevWeek);
+              return next;
+            });
             firestoreLoadedRef.current = true;
             setTimeout(() => { loadingFromFirestoreRef.current = false; }, 100);
             setSyncStatus('synced');
@@ -1631,6 +1648,22 @@ export default function ElasticPlanner() {
   const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {}, dayStatuses: {} };
   const { calendar, points, dayStatuses = {} } = currentData;
 
+  // Hour grid layout: either 07-24 with a compressed late-night zone at the bottom,
+  // or 00-24 in full height when early hours are shown.
+  const gridStart = showEarlyHours ? 0 : 7;
+  const gridHours = showEarlyHours ? [...LATE_HOURS, ...HOURS] : HOURS;
+  const overflowBlocks = showEarlyHours ? [] : calendar.filter((b) => b.start < 7);
+  const lateHoursToShow = overflowBlocks.length > 0
+    ? LATE_HOURS.filter((h) => h < Math.ceil(Math.max(...overflowBlocks.map((b) => b.start + b.duration))))
+    : [];
+
+  // Previous week's Sunday shown as a read-only edge column (drag out of it to copy)
+  const prevWeekIndex = currentWeekIndex - 1;
+  const showPrevSunday = prevWeekIndex >= 1;
+  const prevSundayBlocks = showPrevSunday
+    ? (weeksData[prevWeekIndex]?.calendar || []).filter((b) => b.day === 6 && b.status !== 'inactive')
+    : [];
+
   const getEffectiveDayStatus = (dayIndex) => {
     if (dayStatuses[dayIndex]) return dayStatuses[dayIndex];
     return dayIndex >= 5 ? 'off' : 'normal';
@@ -1659,7 +1692,7 @@ export default function ElasticPlanner() {
     if (authUser && firestoreLoadedRef.current && !loadingFromFirestoreRef.current) {
       const weekData = weeksData[currentWeekIndex];
       if (weekData?.calendar) {
-        saveWeek(currentWeekIndex, weekData.calendar).catch(err =>
+        saveWeek(currentWeekIndex, weekData).catch(err =>
           console.error('Firestore week save failed:', err)
         );
       }
@@ -1671,13 +1704,17 @@ export default function ElasticPlanner() {
     // Load week from Firestore when switching weeks
     if (authUser && firestoreLoadedRef.current) {
       loadingFromFirestoreRef.current = true;
-      loadWeek(currentWeekIndex).then(fsWeek => {
-        if (fsWeek && fsWeek.length > 0) {
-          setWeeksData(prev => ({
-            ...prev,
-            [currentWeekIndex]: { ...prev[currentWeekIndex], calendar: fsWeek },
-          }));
-        }
+      const prevIndex = currentWeekIndex - 1;
+      const loads = [loadWeek(currentWeekIndex)];
+      // Also fetch previous week so its Sunday can be shown as an edge column
+      if (prevIndex >= 1 && !weeksData[prevIndex]) loads.push(loadWeek(prevIndex));
+      Promise.all(loads).then(([fsWeek, fsPrevWeek]) => {
+        setWeeksData(prev => {
+          const next = { ...prev };
+          if (fsWeek) next[currentWeekIndex] = mergeLoadedWeek(prev[currentWeekIndex], fsWeek);
+          if (fsPrevWeek) next[prevIndex] = mergeLoadedWeek(prev[prevIndex], fsPrevWeek);
+          return next;
+        });
         setTimeout(() => { loadingFromFirestoreRef.current = false; }, 100);
       }).catch(err => {
         console.error('Firestore week load failed:', err);
@@ -1791,7 +1828,8 @@ export default function ElasticPlanner() {
         handleRedo();
         return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockIds.length > 0) {
+      const inTextField = ['INPUT', 'TEXTAREA'].includes(e.target?.tagName) || e.target?.isContentEditable;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockIds.length > 0 && !inTextField) {
         const ids = new Set(selectedBlockIds);
         updateCurrentWeek(calendar.filter(b => !ids.has(b.id)), points);
         setSelectedBlockIds([]);
@@ -1916,8 +1954,26 @@ export default function ElasticPlanner() {
       return {
         ...prev,
         [currentWeekIndex]: {
+          ...(prev[currentWeekIndex] || {}), // keep dayStatuses and any other week fields
           calendar: newCalendar,
           points: newPoints || prev[currentWeekIndex]?.points || {},
+        },
+      };
+    });
+  };
+
+  // Patch fields on one block in the current week (functional update so it is
+  // safe to call from effect cleanups with a stale closure)
+  const updateBlockFields = (blockId, fields) => {
+    setWeeksData((prev) => {
+      const week = prev[currentWeekIndex];
+      if (!week?.calendar?.some((b) => b.id === blockId)) return prev;
+      pushUndo(prev);
+      return {
+        ...prev,
+        [currentWeekIndex]: {
+          ...week,
+          calendar: week.calendar.map((b) => (b.id === blockId ? { ...b, ...fields } : b)),
         },
       };
     });
@@ -2581,7 +2637,8 @@ Lätt armhävningspåminnelse
   };
 
   const handleDragStart = (e, block) => {
-    const isDuplicate = e.altKey;
+    // Alt+drag duplicates; dragging from another week's edge column always copies
+    const isDuplicate = e.altKey || !!block._fromOtherWeek;
     setDraggedBlock({ ...block, _isDuplicate: isDuplicate });
     setSelectedBlockIds([]);
     e.dataTransfer.effectAllowed = isDuplicate ? 'copy' : 'move';
@@ -2656,6 +2713,7 @@ Lätt armhävningspåminnelse
 
     // Check if block is being dropped back to the same position
     const samePosition = dropIndicator.type === 'insert'
+      && !draggedBlock._fromOtherWeek
       && dropIndicator.day === draggedBlock.day
       && dropIndicator.hour === draggedBlock.start;
 
@@ -2671,6 +2729,14 @@ Lätt armhävningspåminnelse
     // Remove parallelId and internal flags
     const unlinkedBlock = { ...draggedBlock, parallelId: null };
     delete unlinkedBlock._isDuplicate;
+    if (unlinkedBlock._fromOtherWeek) {
+      // Copy from another week: fresh planned block, no bookkeeping carried over
+      delete unlinkedBlock._fromOtherWeek;
+      delete unlinkedBlock.overflowFrom;
+      delete unlinkedBlock.invoicedAt;
+      unlinkedBlock.status = 'planned';
+      unlinkedBlock.invoiced = false;
+    }
 
     let newCalendar;
     if (isDuplicate) {
@@ -3048,10 +3114,29 @@ Lätt armhävningspåminnelse
 
       <div className="flex-grow flex flex-col overflow-hidden relative">
         <div className="flex-grow overflow-auto p-2">
-          <div className="grid grid-cols-8 gap-0 min-w-[960px] border-l border-zinc-200 bg-white">
+          <div
+            className="grid gap-0 border-l border-zinc-200 bg-white"
+            style={{
+              gridTemplateColumns: `repeat(${showPrevSunday ? 9 : 8}, minmax(0, 1fr))`,
+              minWidth: showPrevSunday ? '1080px' : '960px',
+            }}
+          >
             <div className="col-span-1 border-r border-zinc-200 bg-white sticky left-0 z-30 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
-              <div className="h-10 border-b border-zinc-100 bg-zinc-50" />
-              {HOURS.map((h) => (
+              <div className="h-10 border-b border-zinc-100 bg-zinc-50 sticky top-0 z-30 flex items-center justify-end pr-1">
+                <button
+                  onClick={() => setShowEarlyHours((v) => !v)}
+                  title={showEarlyHours ? 'Dölj timmarna 00–07' : 'Visa timmarna 00–07'}
+                  aria-pressed={showEarlyHours}
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
+                    showEarlyHours
+                      ? 'bg-zinc-800 text-white border-zinc-800'
+                      : 'bg-white text-zinc-400 border-zinc-300 hover:text-zinc-700'
+                  }`}
+                >
+                  {showEarlyHours ? '▾ 00–07' : '▸ 00–07'}
+                </button>
+              </div>
+              {gridHours.map((h) => (
                 <div
                   key={h}
                   className="border-b border-zinc-200 text-[10px] font-medium text-zinc-400 pr-2 pt-1 text-right"
@@ -3060,23 +3145,59 @@ Lätt armhävningspåminnelse
                   {h}:00
                 </div>
               ))}
-              {/* Late-night hour labels — only show if any day has overflow blocks */}
-              {(() => {
-                const anyOverflow = calendar.some(b => b.start < 7);
-                if (!anyOverflow) return null;
-                const maxEnd = Math.ceil(Math.max(...calendar.filter(b => b.start < 7).map(b => b.start + b.duration)));
-                const lateHoursToShow = LATE_HOURS.filter(h => h < maxEnd);
-                return lateHoursToShow.map(h => (
-                  <div
-                    key={`late-label-${h}`}
-                    className="border-b border-zinc-100/50 text-[8px] font-medium text-zinc-300 pr-2 pt-0.5 text-right"
-                    style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
-                  >
-                    {h}:00
-                  </div>
-                ));
-              })()}
+              {/* Late-night hour labels — only when early hours are hidden and some day has overflow blocks */}
+              {lateHoursToShow.map((h) => (
+                <div
+                  key={`late-label-${h}`}
+                  className="border-b border-zinc-100/50 text-[8px] font-medium text-zinc-300 pr-2 pt-0.5 text-right"
+                  style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                >
+                  {h}:00
+                </div>
+              ))}
             </div>
+
+            {showPrevSunday && (
+              <div className="col-span-1 relative border-r-2 border-zinc-300 bg-zinc-50/70">
+                <button
+                  onClick={() => setCurrentWeekIndex(prevWeekIndex)}
+                  title={`Förra veckans söndag. Dra block härifrån in i veckan för att kopiera dem. Klicka för att gå till v.${prevWeekIndex}.`}
+                  className="h-10 w-full flex flex-col items-center justify-center border-b border-zinc-200 sticky top-0 z-20 bg-zinc-100 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200 transition-colors leading-none"
+                >
+                  <span className="text-xs font-bold uppercase">
+                    Sön <span className="font-normal normal-case opacity-70">v.{prevWeekIndex}</span>
+                  </span>
+                  <span className="text-[10px] font-normal opacity-70">{formatDate(getDateForDay(prevWeekIndex, 6))}</span>
+                </button>
+                <div className="relative">
+                  {gridHours.map((h) => (
+                    <div key={`prev-${h}`} className="border-b border-zinc-200 w-full" style={{ height: `${HOUR_HEIGHT}rem` }} />
+                  ))}
+                  {lateHoursToShow.map((h) => (
+                    <div
+                      key={`prev-late-${h}`}
+                      className="border-b border-zinc-100/50 w-full"
+                      style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                    />
+                  ))}
+                  {prevSundayBlocks.map((block) => (
+                    <Block
+                      key={`prev-${block.id}`}
+                      block={block}
+                      readOnly
+                      isSelected={false}
+                      isEditing={false}
+                      gridStartHour={gridStart}
+                      categories={categories}
+                      onClick={(e) => e.stopPropagation()}
+                      onDragStart={(e) => handleDragStart(e, { ...block, parallelId: null, _fromOtherWeek: true })}
+                      onResizeStart={() => {}}
+                      onAction={() => {}}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {DAYS.map((dayName, dIndex) => {
               const isToday = dIndex === todayIndex;
@@ -3175,7 +3296,7 @@ Lätt armhävningspåminnelse
                   </div>
 
                   <div className="relative" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-                    {HOURS.map((h) => (
+                    {gridHours.map((h) => (
                       <div
                         key={h}
                         className="border-b border-zinc-200 w-full relative"
@@ -3201,20 +3322,14 @@ Lätt armhävningspåminnelse
                       </div>
                     ))}
 
-                    {/* Late-night overflow hours (00:00-06:00) — shown when any day has overflow blocks */}
-                    {(() => {
-                      const anyOverflow = calendar.some(b => b.start < 7);
-                      if (!anyOverflow) return null;
-                      const maxEnd = Math.ceil(Math.max(...calendar.filter(b => b.start < 7).map(b => b.start + b.duration)));
-                      const lateHoursToShow = LATE_HOURS.filter(h => h < maxEnd);
-                      return lateHoursToShow.map(h => (
-                        <div
-                          key={`late-${h}`}
-                          className="border-b border-zinc-100/50 w-full relative"
-                          style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
-                        />
-                      ));
-                    })()}
+                    {/* Late-night overflow hours (00:00-06:00) — only when early hours are hidden and some day has overflow blocks */}
+                    {lateHoursToShow.map((h) => (
+                      <div
+                        key={`late-${h}`}
+                        className="border-b border-zinc-100/50 w-full relative"
+                        style={{ height: `${LATE_HOUR_HEIGHT}rem`, backgroundColor: 'rgba(0,0,0,0.02)' }}
+                      />
+                    ))}
 
                     {dropIndicator && dropIndicator.day === dIndex && dropIndicator.type !== 'resize' && (
                       <div
@@ -3222,7 +3337,7 @@ Lätt armhävningspåminnelse
                           dropIndicator.type === 'merge' ? 'border-2 border-blue-500 bg-blue-500/20' : 'h-0.5 bg-blue-600'
                         }`}
                         style={{
-                          top: `${(dropIndicator.hour - 7) * HOUR_HEIGHT}rem`,
+                          top: `${(dropIndicator.hour - gridStart) * HOUR_HEIGHT}rem`,
                           height:
                             dropIndicator.type === 'merge'
                               ? `${(calendar.find((b) => b.id === dropIndicator.targetBlockId)?.duration || 1) * HOUR_HEIGHT}rem`
@@ -3231,10 +3346,10 @@ Lätt armhävningspåminnelse
                       />
                     )}
 
-                    {isToday && currentTime >= 7 && currentTime <= 24 && (
+                    {isToday && currentTime >= gridStart && currentTime <= 24 && (
                       <div
                         className="absolute left-0 right-0 pointer-events-none z-50 flex items-center"
-                        style={{ top: `${(currentTime - 7) * HOUR_HEIGHT}rem` }}
+                        style={{ top: `${(currentTime - gridStart) * HOUR_HEIGHT}rem` }}
                       >
                         <div className="w-2 h-2 bg-blue-600 rounded-full -ml-1" />
                         <div className="flex-grow h-0.5 bg-blue-600" />
@@ -3279,12 +3394,14 @@ Lätt armhävningspåminnelse
                             }}
                             onResizeStart={handleResizeStart}
                             categories={categories}
-                            onUpdateLabel={(lbl) => {
-                              const u = (l) => l.map((b) => (b.id === block.id ? { ...b, label: lbl } : b));
-                              updateCurrentWeek(u(calendar), points);
-                              setEditingLabelId(null);
-                            }}
+                            gridStartHour={gridStart}
+                            onInlineSave={(fields) => updateBlockFields(block.id, fields)}
+                            onCancelEdit={() => setEditingLabelId(null)}
                             onAction={(action) => {
+                              if (action === 'inline') {
+                                setSelectedBlockIds([]);
+                                setEditingLabelId(block.id);
+                              }
                               if (action === 'toggle') toggleStatus(block.id);
                               if (action === 'split') splitBlock(block);
                               if (action === 'parallel') createParallelBlock(block);
@@ -3337,7 +3454,7 @@ Lätt armhävningspåminnelse
                         <div
                           key={group.id}
                           className={`absolute z-[60] group/icon cursor-pointer hover:scale-110 transition-transform flex items-center justify-center ${isPlanned ? 'opacity-40' : ''}`}
-                          style={{ top: `${(group.timestamp - 7) * HOUR_HEIGHT}rem`, right: '0px' }}
+                          style={{ top: `${(group.timestamp - gridStart) * HOUR_HEIGHT}rem`, right: '0px' }}
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedLogDay(dIndex);
@@ -3396,7 +3513,7 @@ Lätt armhävningspåminnelse
               className="absolute bg-white p-2 rounded-lg shadow-xl border border-zinc-200"
               style={{
                 left: `${85 + (addModal.day * 150)}px`,
-                top: `${150 + ((addModal.hour - 7) * HOUR_HEIGHT * 16)}px`
+                top: `${150 + ((addModal.hour - gridStart) * HOUR_HEIGHT * 16)}px`
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -4830,22 +4947,69 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget, cumFle
   );
 }
 
-function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onUpdateLabel, categories = DEFAULT_CATEGORIES, isParallel = false, parallelPosition = null }) {
+function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeStart, onAction, onInlineSave, onCancelEdit, categories = DEFAULT_CATEGORIES, isParallel = false, parallelPosition = null, readOnly = false, gridStartHour = 7 }) {
   const cat = categories[block.type];
   const isDone = block.status === 'done';
   const isInactive = block.status === 'inactive';
 
+  // Inline editing: draft lives in a ref so it can be committed when editing ends
+  // for any reason (Enter, blur, click outside) but not after Escape.
   const [localLabel, setLocalLabel] = useState(block.label);
+  const [localDesc, setLocalDesc] = useState(block.description || '');
+  const draftRef = useRef({ label: block.label, description: block.description || '', dirty: false });
   const inputRef = useRef(null);
+  const showDescField = block.duration >= 1;
 
   useEffect(() => {
-    if (isEditing && inputRef.current) inputRef.current.focus();
+    if (!isEditing) return;
+    const startLabel = block.label || '';
+    const startDesc = block.description || '';
+    setLocalLabel(startLabel);
+    setLocalDesc(startDesc);
+    draftRef.current = { label: startLabel, description: startDesc, dirty: false };
+    if (inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+    return () => {
+      const d = draftRef.current;
+      if (d.dirty && onInlineSave) onInlineSave({ label: d.label, description: d.description });
+    };
   }, [isEditing]);
+
+  const updateDraft = (patch) => {
+    const next = { ...draftRef.current, ...patch };
+    next.dirty = next.label !== (block.label || '') || next.description !== (block.description || '');
+    draftRef.current = next;
+  };
+
+  const commitInline = () => {
+    const d = draftRef.current;
+    if (d.dirty && onInlineSave) onInlineSave({ label: d.label, description: d.description });
+    draftRef.current = { ...d, dirty: false };
+    if (onCancelEdit) onCancelEdit();
+  };
+
+  const cancelInline = () => {
+    draftRef.current = { ...draftRef.current, dirty: false };
+    if (onCancelEdit) onCancelEdit();
+  };
+
+  const handleInlineKeyDown = (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelInline();
+    } else if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      commitInline();
+    }
+  };
 
   // Calculate positioning for parallel blocks
   // Blocks with start < 7 are overflow blocks shown in the compressed late-night zone
   let positionStyle;
-  if (block.start < 7) {
+  if (block.start < 7 && gridStartHour === 7) {
     // Late-night overflow: positioned after the regular 18-hour grid (7-24)
     const regularGridHeight = 18 * HOUR_HEIGHT; // rem for hours 7-24
     positionStyle = {
@@ -4853,7 +5017,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
       height: `${Math.max(block.duration * LATE_HOUR_HEIGHT - 0.1, LATE_HOUR_HEIGHT * 0.4)}rem`,
     };
   } else {
-    positionStyle = { top: `${(block.start - 7) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` };
+    positionStyle = { top: `${(block.start - gridStartHour) * HOUR_HEIGHT}rem`, height: `${block.duration * HOUR_HEIGHT - 0.1}rem` };
   }
 
   if (isParallel && parallelPosition === 'left') {
@@ -4873,8 +5037,15 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
         draggable={!isEditing}
         onDragStart={onDragStart}
         onClick={onClick}
+        onDoubleClick={(e) => {
+          if (readOnly || isEditing) return;
+          e.stopPropagation();
+          onAction('inline');
+        }}
+        title={readOnly ? 'Dra in i veckan för att kopiera' : undefined}
         className={`
-        block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] cursor-pointer transition-all duration-200 shadow-sm border-l-2
+        block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] transition-all duration-200 shadow-sm border-l-2
+        ${readOnly ? 'cursor-grab opacity-60' : 'cursor-pointer'}
         ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}
       `}
         style={{
@@ -4891,21 +5062,35 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
           <div className="flex flex-col w-full h-full">
             <div className="flex justify-between w-full">
               {isEditing ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    onUpdateLabel(localLabel);
+                <div
+                  className="w-full flex flex-col gap-1"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onBlur={(e) => {
+                    // Commit when focus leaves the whole inline editor, not when hopping between its fields
+                    if (!e.currentTarget.contains(e.relatedTarget)) commitInline();
                   }}
                 >
                   <input
                     ref={inputRef}
                     type="text"
                     value={localLabel}
-                    onChange={(e) => setLocalLabel(e.target.value)}
-                    onBlur={() => onUpdateLabel(localLabel)}
-                    className="w-full bg-transparent text-[10px] font-bold border-b border-white/50 focus:outline-none"
+                    onChange={(e) => { setLocalLabel(e.target.value); updateDraft({ label: e.target.value }); }}
+                    onKeyDown={handleInlineKeyDown}
+                    placeholder="Namn"
+                    className="w-full bg-white/20 text-[10px] font-bold uppercase px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white placeholder:text-current placeholder:opacity-40"
                   />
-                </form>
+                  {showDescField && (
+                    <textarea
+                      value={localDesc}
+                      onChange={(e) => { setLocalDesc(e.target.value); updateDraft({ description: e.target.value }); }}
+                      onKeyDown={handleInlineKeyDown}
+                      placeholder="Beskrivning"
+                      rows={Math.max(1, Math.min(6, Math.floor(block.duration * 2) - 1))}
+                      className="w-full bg-white/20 text-[9px] leading-tight px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white resize-none placeholder:text-current placeholder:opacity-40"
+                    />
+                  )}
+                </div>
               ) : (
                 <div className="flex flex-col leading-none w-full">
                   <div className="flex justify-between items-start w-full pr-4">
@@ -4948,7 +5133,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
             )}
           </div>
 
-          {!isEditing && (
+          {!isEditing && !readOnly && (
             <div className={`absolute top-1 right-1 flex flex-col gap-1 transition-all ${isSelected ? 'opacity-100' : 'opacity-0 group-hover/block:opacity-100'}`}>
               <button
                 onClick={(e) => {
@@ -4964,17 +5149,18 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onAction('note');
+                  onAction('inline');
                 }}
                 className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-white/20 text-current"
+                title="Redigera namn och beskrivning"
               >
-                <MessageSquare size={10} />
+                <Edit3 size={10} />
               </button>
             </div>
           )}
         </div>
 
-        {!isEditing && (
+        {!isEditing && !readOnly && (
           <div
             className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center hover:bg-black/10 transition-colors opacity-0 group-hover/block:opacity-100"
             onMouseDown={(e) => onResizeStart(e, block)}
@@ -5005,7 +5191,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
       {isSelected && !isEditing && (
         <div
           className="action-menu absolute left-1/2 -translate-x-1/2 z-[60] flex items-center gap-0.5 bg-zinc-900 text-white p-1 rounded shadow-xl"
-          style={{ top: `${(block.start - 7) * HOUR_HEIGHT - 2.5}rem` }}
+          style={{ top: `${(block.start - gridStartHour) * HOUR_HEIGHT - 2.5}rem` }}
         >
           <span className="text-[10px] font-mono w-6 text-center">{block.duration}h</span>
           <div className="w-px h-3 bg-white/20 mx-1" />
@@ -5075,6 +5261,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
               onAction('edit');
             }}
             className="p-1 hover:bg-white/20 rounded"
+            title="Redigera detaljer (projekt, uppgift, tid)"
           >
             <Edit3 size={12} />
           </button>
