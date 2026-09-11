@@ -5,6 +5,17 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-09-11
+
+### Fixed
+- **Dagstatus (J/H/L) glömdes:** Tre orsaker. `updateCurrentWeek` skrev om veckan utan `dayStatuses` vid varje blockändring, `saveWeek` skickade bara blocken till Firestore, och localStorage-cachen i plannerDB skrev över veckan med enbart blocken (strök även punkter). Nu sparas och laddas hela veckoobjektet `{calendar, points, dayStatuses}` på alla ställen. Gamla Firestore-dokument som saknar fält behåller det som finns lokalt. Det här påverkade övertidsberäkningen för jobb.
+- Delete/Backspace raderar inte längre markerade block när markören står i ett textfält.
+
+### Added
+- **Inline-redigering av block:** Penna vid hover (ersätter pratbubblan) eller dubbelklick på blocket redigerar namn och beskrivning direkt i blocket. Enter sparar, Escape avbryter, klick utanför sparar. Beskrivningsfältet visas när blocket är minst 1 h. Anteckningar och detaljdialogen finns kvar i markerings-menyn.
+- **Visa timmarna 00–07:** Knapp överst i tidskolumnen fäller ut de tidiga timmarna i full höjd, så nattpass (t.ex. räddningstjänst) kan läggas in och läsas som vanligt. Valet sparas i webbläsaren. Avstängd som standard, då visas nattblock som tidigare i den hopklämda zonen längst ner.
+- **Förra veckans söndag som kantkolumn:** Vänster om måndagen visas förra veckans söndag dämpad. Dra ett block därifrån in i veckan för att kopiera det (originalet rörs inte, kopian blir planerad och ofakturerad). Klick på rubriken hoppar till den veckan. Föregående vecka hämtas automatiskt vid veckobyte.
+
 ## [1.24.2] - 2026-05-03
 
 ### Fixed
