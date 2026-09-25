@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.27.0';
+const APP_VERSION = '1.28.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -338,10 +338,22 @@ const setTargetFromWeek = (cat, weekNum, hours) => {
 
 // One-time data migration (v1.27.0): Ola went from 60 % to 50 % from Monday 2026-09-21 (v39).
 // Keyed on data, not a flag, so it applies on every device; an existing targetHistory stops it.
+// v1.28.0: "Jobb totalt" sums the categories that count as work (Bok, Jobb, Räddningstjänst).
+// Runs only while no category has the countsAsWork field yet.
 const migrateCategories = (cats) => {
-  const job = cats.job;
-  if (!job || job.targetHistory || job.targetHoursPerWeek !== 24) return cats;
-  return { ...cats, job: { ...job, targetHistory: [{ from: '2026-W39', hours: 20 }] } };
+  let out = cats;
+  const job = out.job;
+  if (job && !job.targetHistory && job.targetHoursPerWeek === 24) {
+    out = { ...out, job: { ...job, targetHistory: [{ from: '2026-W39', hours: 20 }] } };
+  }
+  if (!Object.values(out).some((c) => 'countsAsWork' in c)) {
+    const next = {};
+    Object.entries(out).forEach(([key, c]) => {
+      next[key] = { ...c, countsAsWork: key === 'job' || key === 'creative' || /räddning/i.test(c.label || '') };
+    });
+    out = next;
+  }
+  return out;
 };
 
 // Format date as "6 jan"
@@ -3179,6 +3191,20 @@ Lätt armhävningspåminnelse
                 return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={effectiveTarget} warnBelowTarget={!!weekTarget} cumFlex={cumulativeFlex[cat.id]} />;
               });
             })()}
+            {(() => {
+              const workIds = Object.values(categories).filter((c) => c.countsAsWork).map((c) => c.id);
+              if (workIds.length < 2) return null;
+              const workBlocks = calendar.filter((b) => workIds.includes(b.type));
+              const done = Math.round(workBlocks.filter((b) => b.status === 'done').reduce((a, b) => a + b.duration, 0) * 10) / 10;
+              const total = Math.round(workBlocks.reduce((a, b) => a + b.duration, 0) * 10) / 10;
+              if (total === 0) return null;
+              return (
+                <div className="flex items-center gap-6">
+                  <div className="w-px h-8 bg-zinc-200" />
+                  <StatPill label="Jobb totalt" current={done} total={total} unit="h" />
+                </div>
+              );
+            })()}
             {totalWeekPoints > 0 && (
               <div className="flex flex-col items-end">
                 <span className="text-[10px] font-bold uppercase text-zinc-400 flex items-center gap-1">
@@ -4575,6 +4601,20 @@ Lätt armhävningspåminnelse
                           placeholder="Opt."
                         />
                       </div>
+                      <label className="flex gap-2 items-center mt-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!cat.countsAsWork}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setCategories(prev => ({
+                              ...prev,
+                              [cat.id]: { ...prev[cat.id], countsAsWork: val }
+                            }));
+                          }}
+                        />
+                        <span className="text-xs font-bold text-zinc-600">Räknas i Jobb totalt</span>
+                      </label>
                       {blocksInUse > 0 && (
                         <div className="text-[11px] text-zinc-500 mt-2">
                           {blocksInUse} block(ar) använder denna kategori
