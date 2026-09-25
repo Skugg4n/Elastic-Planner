@@ -5,6 +5,12 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - 2026-09-25
+
+### Added
+- **"Jobb totalt" i toppen:** summerar veckans klara/planerade timmar för alla kategorier som räknas som arbete (Olas önskemål: Bok + Räddningstjänst + Jobb/Turbin). Visas efter en tunn avdelare när minst två kategorier räknas in.
+- Kryssruta per kategori i Inställningar: "Räknas i Jobb totalt". Engångsmigrering sätter Jobb, Bok och kategorier som heter något med "Räddning" till på, övriga av.
+
 ## [1.27.0] - 2026-09-25
 
 ### Added
