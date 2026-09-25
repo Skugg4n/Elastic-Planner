@@ -5,6 +5,16 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 2026-09-25
+
+### Added
+- **Måltimmar per vecka i stället för en enda siffra.** Ola gick ner från 60 % till 50 % från måndag 21 sep (v39). Tidigare fanns bara `targetHoursPerWeek`, och flexen räknade ALLA gamla veckor mot den; att ändra 24 till 20 hade skrivit om historiken. Nu har kategorin `targetHistory: [{ from: 'YYYY-Www', hours }]` som gäller från en vecka och framåt; basvärdet gäller veckorna före.
+- **Engångsmigrering:** Jobb med 24 h och ingen historik får `{ from: '2026-W39', hours: 20 }`. Datastyrd (inte en flagga) så den slår till på alla enheter; veckor t.o.m. v38 räknas fortfarande mot 24 h.
+- **Veckomeny** ("Veckan ▾" bredvid Idag): Semestervecka (mån–fre lediga på en gång, knappen blir röd "Semester") och måltimmar från visad vecka och framåt. Samma sak i Inställningar, där fältet nu heter "Måltimmar/v från vNN".
+
+### Changed
+- Standardmål för Jobb i nya installationer: 20 h/v (50 %).
+
 ## [1.26.0] - 2026-09-11
 
 ### Changed

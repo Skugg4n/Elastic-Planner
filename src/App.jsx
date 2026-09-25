@@ -3,7 +3,7 @@ import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, Chev
 import { loginWithGoogle, logout, onAuthChange } from './auth';
 import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
 
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.27.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -57,7 +57,7 @@ const DEFAULT_CATEGORIES = {
     doneTextHex: '#005f73',
     doneBorderHex: '#b2dfdb',
     icon: 'Briefcase',
-    targetHoursPerWeek: 24,
+    targetHoursPerWeek: 20,
     weeklyGoalPoints: null,
   },
   training: {
@@ -310,6 +310,38 @@ const getDateForDay = (weekNum, dayIndex) => {
   const date = new Date(monday);
   date.setDate(monday.getDate() + dayIndex);
   return date;
+};
+
+// Week target hours can change over time ("50 % from v39") without rewriting history.
+// cat.targetHoursPerWeek is the base; cat.targetHistory = [{ from: 'YYYY-Www', hours }]
+// overrides from that week onward. Week keys use the current year, like the rest of the app.
+const weekKey = (weekNum) => `${new Date().getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+
+const getTargetForWeek = (cat, weekNum) => {
+  const key = weekKey(weekNum);
+  let hours = cat.targetHoursPerWeek ?? null;
+  [...(cat.targetHistory || [])]
+    .sort((a, b) => a.from.localeCompare(b.from))
+    .forEach((e) => { if (e.from <= key) hours = e.hours; });
+  return hours;
+};
+
+const hasAnyTarget = (cat) =>
+  !!cat.targetHoursPerWeek || (cat.targetHistory || []).some((e) => e.hours);
+
+// Set a category's target from a given week and onward (later changes are replaced)
+const setTargetFromWeek = (cat, weekNum, hours) => {
+  const key = weekKey(weekNum);
+  const kept = (cat.targetHistory || []).filter((e) => e.from < key);
+  return { ...cat, targetHistory: [...kept, { from: key, hours }] };
+};
+
+// One-time data migration (v1.27.0): Ola went from 60 % to 50 % from Monday 2026-09-21 (v39).
+// Keyed on data, not a flag, so it applies on every device; an existing targetHistory stops it.
+const migrateCategories = (cats) => {
+  const job = cats.job;
+  if (!job || job.targetHistory || job.targetHoursPerWeek !== 24) return cats;
+  return { ...cats, job: { ...job, targetHistory: [{ from: '2026-W39', hours: 20 }] } };
 };
 
 // Format date as "6 jan"
@@ -1428,6 +1460,7 @@ export default function ElasticPlanner() {
   const [noteModal, setNoteModal] = useState(null);
   const [editBlockModal, setEditBlockModal] = useState(null);
   const [logSidebarOpen, setLogSidebarOpen] = useState(false);
+  const [weekMenuOpen, setWeekMenuOpen] = useState(false);
   const [selectedLogDay, setSelectedLogDay] = useState(null);
   const [logEntryModal, setLogEntryModal] = useState(null);
   const [editingLogId, setEditingLogId] = useState(null);
@@ -1686,6 +1719,21 @@ export default function ElasticPlanner() {
     setWeeksData(newData);
   };
 
+  const isVacationWeek = [0, 1, 2, 3, 4].every((d) => getEffectiveDayStatus(d) === 'off');
+
+  // Whole week off (Mon–Fri) or back to normal workdays; weekend statuses are left alone
+  const toggleVacationWeek = () => {
+    pushUndo(weeksData);
+    const newStatuses = { ...dayStatuses };
+    [0, 1, 2, 3, 4].forEach((d) => {
+      if (isVacationWeek) delete newStatuses[d];
+      else newStatuses[d] = 'off';
+    });
+    const newData = { ...weeksData };
+    newData[currentWeekIndex] = { ...newData[currentWeekIndex], dayStatuses: newStatuses };
+    setWeeksData(newData);
+  };
+
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(weeksData));
     // Sync current week to Firestore (skip if we just loaded from Firestore)
@@ -1722,6 +1770,12 @@ export default function ElasticPlanner() {
       });
     }
   }, [currentWeekIndex, authUser]);
+
+  // v1.27.0: apply the 50 %-from-v39 migration to whatever categories got loaded
+  useEffect(() => {
+    const migrated = migrateCategories(categories);
+    if (migrated !== categories) setCategories(migrated);
+  }, [categories]);
 
   useEffect(() => {
     localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
@@ -2885,7 +2939,7 @@ Lätt armhävningspåminnelse
   };
 
   Object.values(categories).forEach(cat => {
-    if (!cat.targetHoursPerWeek) return;
+    if (!hasAnyTarget(cat)) return;
     let totalDone = 0;
     let totalTarget = 0;
     let weekCount = 0;
@@ -2902,6 +2956,7 @@ Lätt armhävningspåminnelse
       if (doneBlocksForCat.length === 0) return;
 
       const weekDayStatuses = weekData.dayStatuses || {};
+      const weekTarget = getTargetForWeek(cat, weekIndex) || 0;
       let blocksToCount;
 
       if (weekIndex === realCurrentWeek) {
@@ -2913,14 +2968,14 @@ Lätt armhävningspåminnelse
         for (let d = 0; d <= Math.min(realCurrentDayIndex, 4); d++) {
           effectiveDays += getDayFactor(weekDayStatuses, d);
         }
-        totalTarget += cat.targetHoursPerWeek * (effectiveDays / 5);
+        totalTarget += weekTarget * (effectiveDays / 5);
       } else {
         // Past week: pro-rate target based on tracked workdays with dayFactor
         blocksToCount = doneBlocksForCat.filter(b => getDayFactor(weekDayStatuses, b.day) > 0);
         const trackedWorkdays = [0, 1, 2, 3, 4]
           .filter(d => getDayFactor(weekDayStatuses, d) > 0 && weekData.calendar.some(b => b.day === d))
           .reduce((sum, d) => sum + getDayFactor(weekDayStatuses, d), 0);
-        totalTarget += cat.targetHoursPerWeek * (trackedWorkdays / 5);
+        totalTarget += weekTarget * (trackedWorkdays / 5);
       }
 
       totalDone += blocksToCount.reduce((a, b) => a + b.duration, 0);
@@ -2985,6 +3040,59 @@ Lätt armhävningspåminnelse
             >
               Idag
             </button>
+            <div className="relative">
+              <button
+                onClick={() => setWeekMenuOpen((o) => !o)}
+                className={`text-xs font-bold px-3 py-1 rounded-lg transition-colors ${
+                  isVacationWeek ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'text-zinc-600 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200'
+                }`}
+                aria-label="Veckomeny"
+              >
+                {isVacationWeek ? 'Semester ▾' : 'Veckan ▾'}
+              </button>
+              {weekMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-[70]" onClick={() => setWeekMenuOpen(false)} />
+                  <div className="absolute left-0 top-full mt-2 z-[71] w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-4 text-sm">
+                    <div className="text-[10px] font-bold uppercase text-zinc-400 mb-2">
+                      Vecka {currentWeekIndex} · {formatDate(getDateForDay(currentWeekIndex, 0))}–{formatDate(getDateForDay(currentWeekIndex, 6))}
+                    </div>
+                    <label className="flex items-center gap-2 py-1 cursor-pointer">
+                      <input type="checkbox" checked={isVacationWeek} onChange={toggleVacationWeek} />
+                      <span className="font-bold text-zinc-700">Semestervecka</span>
+                      <span className="text-xs text-zinc-400">mån–fre lediga</span>
+                    </label>
+                    {Object.values(categories).filter(hasAnyTarget).length > 0 && (
+                      <>
+                        <hr className="my-3 border-zinc-100" />
+                        <div className="text-xs font-bold text-zinc-600 mb-2">Måltimmar från v{currentWeekIndex} och framåt</div>
+                        {Object.values(categories).filter(hasAnyTarget).map((cat) => (
+                          <div key={cat.id} className="flex items-center gap-2 py-1">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.hex }} />
+                            <span className="flex-1 text-zinc-700">{cat.label}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={getTargetForWeek(cat, currentWeekIndex) ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value ? parseInt(e.target.value) : null;
+                                setCategories((prev) => ({
+                                  ...prev,
+                                  [cat.id]: setTargetFromWeek(prev[cat.id], currentWeekIndex, val),
+                                }));
+                              }}
+                              className="w-14 bg-white border border-zinc-300 rounded px-2 py-0.5 text-sm text-right"
+                            />
+                            <span className="text-xs text-zinc-400">h/v</span>
+                          </div>
+                        ))}
+                        <p className="text-[11px] text-zinc-400 mt-2">Veckor före v{currentWeekIndex} behåller sina timmar.</p>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <button
               onClick={() => setReportSidebarOpen(true)}
               className="text-xs font-bold text-zinc-600 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors"
@@ -3063,11 +3171,12 @@ Lätt armhävningspåminnelse
               return Object.values(categories).map(cat => {
                 const done = Math.round(calendar.filter(b => b.type === cat.id && b.status === 'done').reduce((a, b) => a + b.duration, 0) * 10) / 10;
                 const total = Math.round(calendar.filter(b => b.type === cat.id).reduce((a, b) => a + b.duration, 0) * 10) / 10;
-                if (total === 0 && !cat.targetHoursPerWeek) return null;
-                const effectiveTarget = cat.targetHoursPerWeek
-                  ? Math.round(cat.targetHoursPerWeek * dayFactor * 10) / 10
+                const weekTarget = getTargetForWeek(cat, currentWeekIndex);
+                if (total === 0 && !weekTarget) return null;
+                const effectiveTarget = weekTarget
+                  ? Math.round(weekTarget * dayFactor * 10) / 10
                   : null;
-                return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={effectiveTarget} warnBelowTarget={!!cat.targetHoursPerWeek} cumFlex={cumulativeFlex[cat.id]} />;
+                return <StatPill key={cat.id} label={cat.label} current={done} total={total} unit="h" target={effectiveTarget} warnBelowTarget={!!weekTarget} cumFlex={cumulativeFlex[cat.id]} />;
               });
             })()}
             {totalWeekPoints > 0 && (
@@ -4433,16 +4542,16 @@ Lätt armhävningspåminnelse
                         </div>
                       </div>
                       <div className="flex gap-2 items-center mb-2">
-                        <span className="text-xs font-bold text-zinc-600">Måltimmar/v:</span>
+                        <span className="text-xs font-bold text-zinc-600">Måltimmar/v från v{currentWeekIndex}:</span>
                         <input
                           type="number"
                           min="0"
-                          value={cat.targetHoursPerWeek ?? ''}
+                          value={getTargetForWeek(cat, currentWeekIndex) ?? ''}
                           onChange={(e) => {
                             const val = e.target.value ? parseInt(e.target.value) : null;
                             setCategories(prev => ({
                               ...prev,
-                              [cat.id]: { ...prev[cat.id], targetHoursPerWeek: val }
+                              [cat.id]: setTargetFromWeek(prev[cat.id], currentWeekIndex, val)
                             }));
                           }}
                           className="w-16 bg-white border border-zinc-300 rounded px-2 py-1 text-sm"
