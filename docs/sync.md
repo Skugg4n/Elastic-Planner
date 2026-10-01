@@ -16,6 +16,12 @@ Backend (nexus `firebase/functions/planner-week.js`) måste räkna på samma sä
 - `App.jsx`: skickar varje ändring av `weeksData` till synken, tar emot molnändringar via `applyWeeks`.
   localStorage (`elastic-planner-weeks`) är bara en cache.
 
+## Förslag (v1.30+)
+Veckodokumentet har också `suggestions`: föreslagna block som inte är en del av kalendern förrän användaren
+godkänner dem i appen. Samma fält som ett block plus `reason` (visas som tooltip) och `source` (vem som föreslog).
+Backend lägger in dem via `addSuggestions` i nexus `planner-write.js` (API: `POST action=suggest`,
+CLI: `node planner-cli.js suggest '{...}'`). Godkännande flyttar posten till `calendar` med `suggestedBy`.
+
 ## Regler att hålla
 - Skriv aldrig en vecka till molnet för att den visas. Bara faktiska lokala ändringar skrivs.
 - Mutera aldrig block på plats. Äldre versioner delas med ångra-historiken och synkens bas.

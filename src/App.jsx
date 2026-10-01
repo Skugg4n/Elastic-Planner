@@ -6,7 +6,7 @@ import { currentWeekIndex as currentWeekIndexNow, dateForDay, weekIndexForDate, 
 import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge.js';
 import { createWeekSync } from './weekSync.js';
 
-const APP_VERSION = '1.29.0';
+const APP_VERSION = '1.30.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -1726,6 +1726,7 @@ export default function ElasticPlanner() {
   const todayIndex = isCurrentWeek ? realTodayIndex : -1; // -1 means no today indicator
   const currentData = weeksData[currentWeekIndex] || { calendar: [], points: {}, dayStatuses: {} };
   const { calendar, points, dayStatuses = {} } = currentData;
+  const suggestions = currentData.suggestions || [];
 
   // Hour grid layout: either 07-24 with a compressed late-night zone at the bottom,
   // or 00-24 in full height when early hours are shown.
@@ -2181,6 +2182,62 @@ export default function ElasticPlanner() {
           calendar: week.calendar.map((b) => (b.id === blockId ? { ...b, ...fields } : b)),
         },
       };
+    });
+  };
+
+  // Suggestions are proposed blocks (from Emma or an activity observer). Approving one
+  // turns it into a normal block; nothing counts as worked time until then.
+  const approveSuggestions = (ids) => {
+    const week = weeksRef.current[currentWeekIndex];
+    const idSet = new Set(ids);
+    const chosen = (week?.suggestions || []).filter((s) => idSet.has(s.id));
+    if (chosen.length === 0) return;
+    pushUndo(weeksRef.current);
+    const now = new Date();
+    let nextCalendar = week.calendar || [];
+    let history = projectHistory;
+    [...chosen].sort((a, b) => a.day - b.day || a.start - b.start).forEach((s) => {
+      const end = getDateForDay(currentWeekIndex, s.day);
+      end.setMinutes(Math.round((s.start + s.duration) * 60));
+      const type = categories[s.type] ? s.type : Object.keys(categories)[0];
+      const block = {
+        id: uid('block'),
+        day: s.day,
+        start: s.start,
+        duration: s.duration,
+        type,
+        label: s.label || categories[type]?.label || '',
+        // Time that has already passed was worked; a suggestion for later is a plan
+        status: s.status || (end <= now ? 'done' : 'planned'),
+        description: s.description || '',
+        projectName: s.projectName || null,
+        taskName: s.taskName || null,
+        parallelId: null,
+        invoiced: false,
+        ...(s.source ? { suggestedBy: s.source } : {}),
+      };
+      nextCalendar = autoParallelize([...nextCalendar, block], block);
+      if (block.projectName && block.taskName) {
+        history = updateProjectHistoryRecord(history, block.type, block.projectName, block.taskName);
+      }
+    });
+    setWeeksData((prev) => {
+      const w = prev[currentWeekIndex] || {};
+      return {
+        ...prev,
+        [currentWeekIndex]: { ...w, calendar: nextCalendar, suggestions: (w.suggestions || []).filter((s) => !idSet.has(s.id)) },
+      };
+    });
+    if (history !== projectHistory) setProjectHistory(history);
+  };
+
+  const dismissSuggestions = (ids) => {
+    const idSet = new Set(ids);
+    if (!(weeksRef.current[currentWeekIndex]?.suggestions || []).some((s) => idSet.has(s.id))) return;
+    pushUndo(weeksRef.current);
+    setWeeksData((prev) => {
+      const w = prev[currentWeekIndex] || {};
+      return { ...prev, [currentWeekIndex]: { ...w, suggestions: (w.suggestions || []).filter((s) => !idSet.has(s.id)) } };
     });
   };
 
@@ -3481,6 +3538,7 @@ Lätt armhävningspåminnelse
             {DAYS.map((dayName, dIndex) => {
               const isToday = dIndex === todayIndex;
               const dayBlocks = calendar.filter((b) => b.day === dIndex);
+              const daySuggestions = suggestions.filter((sug) => sug.day === dIndex);
               const dayPoints = points[dIndex] || [];
               const groupedPoints = dayPoints.reduce((acc, point) => {
                 const existingGroup = acc.find((g) => Math.abs(g.timestamp - point.timestamp) < 0.25);
@@ -3537,6 +3595,16 @@ Lätt armhävningspåminnelse
                         }`} title="Jobbdag → Halvdag → Ledig">
                           {getEffectiveDayStatus(dIndex) === 'half' ? 'H' : getEffectiveDayStatus(dIndex) === 'off' ? 'L' : 'J'}
                         </button>
+                        {daySuggestions.length > 0 && (
+                          <button
+                            onClick={() => approveSuggestions(daySuggestions.map((sug) => sug.id))}
+                            className="text-[10px] font-bold leading-none px-1.5 py-0.5 rounded border border-dashed border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors whitespace-nowrap"
+                            title={daySuggestions.length === 1 ? 'Godkänn dagens förslag' : `Godkänn dagens ${daySuggestions.length} förslag`}
+                            aria-label={`Godkänn dagens förslag (${daySuggestions.length})`}
+                          >
+                            ✓ {daySuggestions.length}
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="relative">
@@ -3732,6 +3800,19 @@ Lätt armhävningspåminnelse
                           />
                         );
                       })}
+
+                    {daySuggestions.map((sug) => (
+                      <SuggestionBlock
+                        key={sug.id}
+                        suggestion={sug}
+                        categories={categories}
+                        gridStartHour={gridStart}
+                        beside={dayBlocks.some((b) => b.status !== 'inactive' && b.start < sug.start + sug.duration && b.start + b.duration > sug.start)}
+                        passive={!!draggedBlock}
+                        onApprove={() => approveSuggestions([sug.id])}
+                        onDismiss={() => dismissSuggestions([sug.id])}
+                      />
+                    ))}
 
                     {groupedPoints.map((group) => {
                       const category = categories[group.categoryId] || categories.life || Object.values(categories)[0];
@@ -5313,6 +5394,61 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget, cumFle
           totalt: {cumFlex.diff >= 0 ? '+' : ''}{cumFlex.diff}{unit} ({cumFlex.weekCount}v)
         </span>
       )}
+    </div>
+  );
+}
+
+// A proposed block: dashed outline, not part of the calendar until approved.
+// Sits beside (not on top of) a real block that covers the same time.
+function SuggestionBlock({ suggestion, categories, gridStartHour = 7, beside = false, passive = false, onApprove, onDismiss }) {
+  const cat = categories[suggestion.type];
+  const color = cat?.hex || '#52525b';
+  let position;
+  if (suggestion.start < 7 && gridStartHour === 7) {
+    position = {
+      top: `${18 * HOUR_HEIGHT + suggestion.start * LATE_HOUR_HEIGHT}rem`,
+      height: `${Math.max(suggestion.duration * LATE_HOUR_HEIGHT - 0.1, LATE_HOUR_HEIGHT * 0.4)}rem`,
+    };
+  } else {
+    position = { top: `${(suggestion.start - gridStartHour) * HOUR_HEIGHT}rem`, height: `${suggestion.duration * HOUR_HEIGHT - 0.1}rem` };
+  }
+  const detail = suggestion.projectName && suggestion.taskName
+    ? `${suggestion.projectName} / ${suggestion.taskName}`
+    : suggestion.projectName || suggestion.taskName || '';
+  const tooltip = ['Förslag, räknas inte förrän du godkänner', suggestion.reason].filter(Boolean).join('. ');
+  const short = suggestion.duration < 1;
+  return (
+    <div
+      className="suggestion-block absolute z-20 overflow-hidden rounded-[2px] border-2 border-dashed bg-white text-zinc-700"
+      style={{ ...position, left: beside ? '50%' : '4px', right: '4px', borderColor: color, pointerEvents: passive ? 'none' : undefined }}
+      title={tooltip}
+    >
+      <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: color, opacity: 0.1 }} />
+      <div className={`relative flex justify-between gap-1 h-full ${short ? 'items-center px-1.5' : 'items-start p-1.5'}`}>
+        <div className="flex flex-col leading-none min-w-0">
+          <span className="text-[10px] font-bold uppercase truncate">{suggestion.label || cat?.label || 'Förslag'}</span>
+          {detail && !short && <span className="text-[9px] opacity-80 mt-0.5 truncate">{detail}</span>}
+          {!short && <span className="text-[9px] opacity-60 font-mono mt-0.5">{suggestion.duration}h · förslag</span>}
+        </div>
+        <div className={`flex flex-none gap-1 ${short ? 'flex-row' : 'flex-col'}`}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onApprove(); }}
+            className="w-4 h-4 rounded-full border border-current flex items-center justify-center bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-colors"
+            title="Godkänn förslaget"
+            aria-label="Godkänn förslaget"
+          >
+            <Check size={10} strokeWidth={3} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+            className="w-4 h-4 rounded-full border border-current flex items-center justify-center bg-white hover:bg-zinc-700 hover:text-white hover:border-zinc-700 transition-colors"
+            title="Ta bort förslaget"
+            aria-label="Ta bort förslaget"
+          >
+            <X size={10} strokeWidth={3} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

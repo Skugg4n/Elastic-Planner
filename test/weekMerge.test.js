@@ -140,3 +140,22 @@ test('fixDuplicateIds renames later occurrences only', () => {
   const clean = [blk('a'), blk('b')];
   assert.equal(fixDuplicateIds(clean), clean, 'untouched array is returned as is');
 });
+
+test('suggestions merge like blocks: approving here and a new suggestion from the cloud both hold', () => {
+  const sug = (id) => ({ id, day: 1, start: 9, duration: 2, type: 'job', label: 'Jobb', projectName: 'Dalenum', source: 'observer' });
+  const base = week([], { suggestions: [sug('s1'), sug('s2')] });
+  // here: s1 approved (removed from suggestions, added to the calendar)
+  const local = week([blk('from-s1')], { suggestions: [sug('s2')] });
+  // cloud: the observer added s3 meanwhile
+  const server = week([], { suggestions: [sug('s1'), sug('s2'), sug('s3')] });
+  const m = mergeWeek(base, local, server);
+  assert.deepEqual(m.suggestions.map((x) => x.id), ['s2', 's3']);
+  assert.deepEqual(ids(m), ['from-s1']);
+});
+
+test('a week holding only suggestions is not empty, and old weeks without the field compare equal', () => {
+  assert.ok(!isEmptyWeek({ calendar: [], suggestions: [{ id: 's' }] }));
+  assert.ok(weeksEqual({ calendar: [blk('a')] }, { calendar: [blk('a')], suggestions: [] }));
+  assert.ok(!weeksEqual({ calendar: [], suggestions: [{ id: 's' }] }, { calendar: [] }));
+  assert.equal(diffWeeks(week([], { suggestions: [{ id: 's' }] }), week([])).otherChanged, true);
+});
