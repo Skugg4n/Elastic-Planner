@@ -5,6 +5,42 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-10-01
+
+Robusthetsrelease: grunden som behövs innan tid kan registreras automatiskt och användas som fakturaunderlag.
+
+### Fixed
+- **Veckobyte skrev över molnet med enhetens gamla kopia.** Sparningen körde före laddningen när man bytte vecka, så varje vecka man bläddrade till skrevs om med det som råkade ligga i den här webbläsaren. Ändringar från Emma eller en annan enhet försvann. Nu skrivs bara veckor som faktiskt ändrats här.
+- **Ändringar i andra veckor än den aktuella nådde aldrig molnet** ("Markera som fakturerad" i rapporten, planimport, ångra). De låg bara lokalt. Nu synkas varje ändrad vecka.
+- **Rapport och flextotal räknade bara på veckor som fanns i den här webbläsaren.** Nu hämtas alla veckor från molnet vid start.
+- **"Kopiera som text" i rapporten valde veckor efter position i listan**, vilket gav fel veckor så fort en vecka saknades. Väljer nu på veckans eget nummer.
+- **Ångra efter storleksändring** krävde ett tryck per musrörelse och tömde ångra-historiken. Nu ett steg per storleksändring.
+- **Dela block två gånger gav dubbla id:n**, så att radera eller ändra det ena blocket påverkade båda. Nya block får alltid unika id:n och befintliga dubbletter repareras.
+- **Nattpass på söndag** fortsatte på måndag i samma vecka i stället för nästa.
+- **Lägg till-rutan** hamnade fel (ibland utanför fönstret) sedan söndagskolumnen kom. Den visas nu vid klicket.
+- **Sparfunktionen kunde låsa sig** när appen låg i bakgrunden utan osparade ändringar (hittad i test av den nya synken, aldrig släppt).
+- Halvtimmesblock kan nu redigera Projekt och Uppgift inline (blocket växer under redigering).
+- Lokal cache: full lagring kraschar inte längre sparningen.
+- **Service workern cachade alla nätverksanrop, även mot Firestore.** Med realtidslyssning hade den försökt cacha en ström som aldrig tar slut. Den hanterar nu bara appens egna filer (cache v3).
+
+### Changed
+- **Veckor har årtal.** Veckorna numreras löpande (1 = 2026 v.1, 54 = 2027 v.1, se `src/weeks.js`). För 2026 är numret detsamma som förut, så ingen data behövde flyttas. Appen visar "V.1 2027" när veckan ligger i ett annat år. Måltimmar, flex och datum räknar rätt över nyår. Rapportens veckoväljare är nu år + vecka.
+- **Ny synk** (`src/weekSync.js`, `src/weekMerge.js`): appen lyssnar på molnet i realtid, så Emmas block och ändringar från en annan enhet dyker upp utan omladdning. Sparning sker per ändrad vecka i en transaktion som slår ihop per block i stället för att ersätta hela veckan. Två enheter som ändrar samma vecka skriver inte över varandra.
+- **Offline:** ändringar sparas lokalt, markeras "Ej synkat" och slås ihop med molnet när anslutningen är tillbaka, även efter omstart.
+- **Ångra** backar bara din egen handling. Ändringar som kommit från molnet under tiden ligger kvar.
+- Inställningar och Lådan uppdateras live från molnet, så en flik som stått öppen länge skriver inte gamla inställningar över nya.
+- Sparning är fördröjd en knapp sekund i stället för en skrivning per musrörelse.
+- "Hoppa över" i frågan om att flytta lokal data till kontot heter nu "Nej, logga ut" och gör just det.
+
+### Added
+- **Engångsfråga per enhet** vid första start med nya synken, bara om enhetens kopia skiljer sig från molnet: "Den här enheten" (enhetens version vinner där de skiljer sig, block som bara finns i molnet läggs till, inget tas bort) eller "Molnet" (enhetens kopia ersätts). Det som ersätts sparas som säkerhetskopia (`planner/{uid}/backups` respektive lokalt).
+- Varje veckodokument i Firestore beskriver sig självt: `isoYear`, `isoWeek`, `monday`.
+- **Tester:** `npm test` (45 st: veckoräkning, sammanslagning, synk mot simulerat moln).
+- **Lokal testmiljö** mot Firebase-emulatorer för att prova synk mellan flera enheter utan riktig data: se `dev/README.md`.
+
+### Känt
+- Emmas backend (nexus `firebase/functions/planner-*.js`) räknar fortfarande ISO-vecka utan år. Det ger samma nummer hela 2026. Ändringen finns på branchen `fix/planner-week-index` i nexus och måste deployas före 2027-01-04.
+
 ## [1.28.0] - 2026-09-25
 
 ### Added

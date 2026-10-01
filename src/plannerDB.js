@@ -1,5 +1,6 @@
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "./firebase";
+import { collection, doc, getDoc, onSnapshot, runTransaction, setDoc, serverTimestamp } from "firebase/firestore";
+import { db, testNet } from "./firebase";
+import { isoYearWeek, isoDateForDay } from "./weeks.js";
 
 const LS_KEY = "elastic-planner-weeks";
 let currentUid = null;
@@ -85,6 +86,101 @@ export async function saveWeek(weekId, weekData) {
       console.error("Firestore write failed:", err);
     }
   }
+}
+
+// ── Live week sync (used by weekSync.js) ──
+
+/** Readable description stored next to each week so a document explains itself. */
+function describeWeek(weekId) {
+  const idx = Number(weekId);
+  if (!Number.isFinite(idx)) return {};
+  const { year, week } = isoYearWeek(idx);
+  return { isoYear: year, isoWeek: week, monday: isoDateForDay(idx, 0) };
+}
+
+/**
+ * Firestore adapter for the week sync: a live listener on all weeks, a
+ * transactional write per week and a place to put safety copies.
+ */
+export function weeksAdapter(uid = currentUid) {
+  if (!uid) throw new Error("weeksAdapter needs a signed-in user");
+  const weekRef = (id) => doc(db, "planner", uid, "weeks", String(id));
+  return {
+    subscribe(onChanges, onError) {
+      let gotServerSnapshot = false;
+      return onSnapshot(
+        collection(db, "planner", uid, "weeks"),
+        { includeMetadataChanges: true },
+        (snap) => {
+          if (!gotServerSnapshot) {
+            // An offline start first yields an empty snapshot from the cache; that is not
+            // "the cloud has nothing", so wait for a real answer from the server.
+            if (snap.metadata.fromCache) return;
+            gotServerSnapshot = true;
+            onChanges({
+              initial: true,
+              changes: snap.docs.map((d) => ({ id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites })),
+            });
+            return;
+          }
+          const changes = snap
+            .docChanges()
+            .filter((c) => c.type !== "removed")
+            .map((c) => ({ id: c.doc.id, data: c.doc.data(), pending: c.doc.metadata.hasPendingWrites }));
+          if (changes.length > 0) onChanges({ initial: false, changes });
+        },
+        (err) => {
+          console.warn("Week listener failed:", err);
+          if (onError) onError(err);
+        }
+      );
+    },
+
+    async transact(id, updater) {
+      if (testNet.offline) throw new Error("offline (emulator test hook)");
+      await runTransaction(db, async (tx) => {
+        const ref = weekRef(id);
+        const snap = await tx.get(ref);
+        const out = updater(snap.exists() ? snap.data() : null);
+        if (out !== undefined) {
+          tx.set(ref, { ...out, ...describeWeek(id), updatedAt: serverTimestamp() });
+        }
+      });
+    },
+
+    // One document per week keeps every safety copy well under Firestore's size limit
+    async backup({ reason, createdAt, weeks }) {
+      const stamp = String(createdAt || new Date().toISOString()).replace(/[:.]/g, "-");
+      await Promise.all(
+        Object.entries(weeks).map(([id, week]) =>
+          setDoc(doc(db, "planner", uid, "backups", `${stamp}_w${id}`), {
+            reason,
+            weekId: String(id),
+            ...describeWeek(id),
+            week,
+            createdAt: serverTimestamp(),
+          })
+        )
+      );
+    },
+  };
+}
+
+/**
+ * Live listener on one of the user's documents (settings, bank).
+ * Calls back with the data of every confirmed server version, skipping this
+ * device's own unconfirmed writes. Returns an unsubscribe function.
+ */
+export function subscribeUserDoc(uid, collectionName, docId, onData) {
+  if (!uid) return () => {};
+  return onSnapshot(
+    doc(db, "planner", uid, collectionName, docId),
+    (snap) => {
+      if (snap.metadata.hasPendingWrites || snap.metadata.fromCache || !snap.exists()) return;
+      onData(snap.data());
+    },
+    (err) => console.warn(`Listener on ${collectionName}/${docId} failed:`, err)
+  );
 }
 
 // ── Settings (categories, preferences) ──
@@ -279,7 +375,9 @@ export async function hasFirestoreData() {
     const snap = await getDoc(userDoc("settings", "config"));
     return snap.exists();
   } catch (err) {
-    return false;
+    // Offline or blocked: unknown. Returning null lets the caller avoid treating
+    // "could not ask" as "the account is empty".
+    return null;
   }
 }
 
