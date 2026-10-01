@@ -5,6 +5,18 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-10-01
+
+### Added
+- **Förslag på tidsblock.** Emma eller en kommande aktivitetsobservatör kan föreslå block. De visas med streckad kant i veckan och räknas inte som tid förrän du godkänner dem.
+  - Bocken på förslaget gör det till ett vanligt block. Tid som redan passerat blir "klar", tid framåt blir "planerad".
+  - Krysset tar bort förslaget.
+  - Dagens rubrik får en knapp "✓ 2" som godkänner alla dagens förslag på en gång.
+  - Hovra för att se varför förslaget finns (t.ex. "Photoshop: Tivoli 4/omslag.psd").
+  - Ett förslag som krockar med ett befintligt block visas bredvid det och blir ett parallellblock vid godkännande.
+  - Ångra fungerar på både godkänn och ta bort.
+- Förslagen ligger i veckans `suggestions`-lista i Firestore, skild från kalendern, och synkas och slås ihop som block (`src/weekMerge.js`). Rapporter, flex och Emmas sammanfattningar påverkas inte av dem.
+
 ## [1.29.0] - 2026-10-01
 
 Robusthetsrelease: grunden som behövs innan tid kan registreras automatiskt och användas som fakturaunderlag.

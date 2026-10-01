@@ -1,11 +1,13 @@
-// Comparing and merging week objects ({ calendar, points, dayStatuses }).
+// Comparing and merging week objects ({ calendar, points, dayStatuses, suggestions }).
+// `suggestions` are proposed blocks (from Emma or an activity observer) that are not part
+// of the calendar until the user approves them.
 //
 // Two devices (or the app and Emma) can change the same week. Instead of the
 // last writer replacing the whole week, changes are merged per block with a
 // three-way merge: `base` is the version both sides last agreed on, `local`
 // is this device's version and `server` is what the cloud has now.
 
-export const emptyWeek = () => ({ calendar: [], points: {}, dayStatuses: {} });
+export const emptyWeek = () => ({ calendar: [], points: {}, dayStatuses: {}, suggestions: [] });
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -48,6 +50,7 @@ export const canonicalWeek = (week) => {
     calendar: (Array.isArray(w.calendar) ? w.calendar : []).map(canonValue).sort(byId),
     points: canonPoints(w.points),
     dayStatuses: canonValue(isPlainObject(w.dayStatuses) ? w.dayStatuses : {}),
+    suggestions: (Array.isArray(w.suggestions) ? w.suggestions : []).map(canonValue).sort(byId),
   };
 };
 
@@ -64,6 +67,7 @@ export const persistableWeek = (week) => {
     calendar: Array.isArray(w.calendar) ? w.calendar : [],
     points: isPlainObject(w.points) ? w.points : {},
     dayStatuses: isPlainObject(w.dayStatuses) ? w.dayStatuses : {},
+    suggestions: Array.isArray(w.suggestions) ? w.suggestions : [],
   }));
 };
 
@@ -151,6 +155,7 @@ export const mergeWeek = (base, local, server) => {
     calendar: mergeItems(b.calendar, l.calendar, server.calendar),
     points: mergePoints(b.points, l.points, server.points),
     dayStatuses: mergeDayStatuses(b.dayStatuses, l.dayStatuses, server.dayStatuses),
+    suggestions: mergeItems(b.suggestions, l.suggestions, server.suggestions),
   });
 };
 
@@ -168,7 +173,7 @@ export const diffWeeks = (local, server) => {
   s.forEach((_, key) => { if (!l.has(key)) onlyServer++; });
   const cl = canonicalWeek(local);
   const cs = canonicalWeek(server);
-  const otherChanged = JSON.stringify([cl.points, cl.dayStatuses]) !== JSON.stringify([cs.points, cs.dayStatuses]);
+  const otherChanged = JSON.stringify([cl.points, cl.dayStatuses, cl.suggestions]) !== JSON.stringify([cs.points, cs.dayStatuses, cs.suggestions]);
   return { changed, onlyLocal, onlyServer, otherChanged, equal: changed + onlyLocal + onlyServer === 0 && !otherChanged };
 };
 
