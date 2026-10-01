@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, LogIn, LogOut, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Search, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 import { loginWithGoogle, logout, onAuthChange } from './auth';
-import { setUser, loadWeek, saveWeek, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData } from './plannerDB';
+import { setUser, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData, weeksAdapter, subscribeUserDoc } from './plannerDB';
+import { currentWeekIndex as currentWeekIndexNow, dateForDay, weekIndexForDate, weekIndexFromKey, weekKeyOf, weekLabel, weekNumberOf } from './weeks.js';
+import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge.js';
+import { createWeekSync } from './weekSync.js';
 
-const APP_VERSION = '1.28.0';
+const APP_VERSION = '1.29.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -272,50 +275,28 @@ const parsePlanMD = (mdContent) => {
   return { metadata, days };
 };
 
-// Get ISO week number for a date
-const getISOWeek = (date) => {
-  const target = new Date(date.valueOf());
-  const dayNum = (date.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNum + 3);
-  const firstThursday = target.valueOf();
-  target.setMonth(0, 1);
-  if (target.getDay() !== 4) {
-    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-  }
-  return 1 + Math.ceil((firstThursday - target) / 604800000);
-};
-
-// Get current ISO week number
-const getCurrentWeek = () => {
-  return getISOWeek(new Date());
-};
-
-// Get Monday's date for a given ISO week and year
-const getMondayOfWeek = (weekNum, year) => {
-  const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
-  const dow = simple.getDay();
-  const ISOweekStart = simple;
-  if (dow <= 4) {
-    ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-  } else {
-    ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
-  }
-  return ISOweekStart;
-};
+// Weeks are identified by a running index (see weeks.js): 1 = 2026-W01 ... 53 = 2026-W53,
+// 54 = 2027-W01. For 2026 the index equals the ISO week number.
+const getCurrentWeek = () => currentWeekIndexNow();
 
 // Get date for a specific day in a week (0 = Monday, 6 = Sunday)
-const getDateForDay = (weekNum, dayIndex) => {
-  const year = new Date().getFullYear();
-  const monday = getMondayOfWeek(weekNum, year);
-  const date = new Date(monday);
-  date.setDate(monday.getDate() + dayIndex);
-  return date;
-};
+const getDateForDay = (weekNum, dayIndex) => dateForDay(weekNum, dayIndex);
+
+// Unique id for new blocks, points and bank items
+const uid = (prefix) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+// JSON with sorted keys, for comparing settings regardless of key order
+const stableStringify = (value) => JSON.stringify(value, (key, v) => {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    return Object.keys(v).sort().reduce((acc, k) => { acc[k] = v[k]; return acc; }, {});
+  }
+  return v;
+});
 
 // Week target hours can change over time ("50 % from v39") without rewriting history.
 // cat.targetHoursPerWeek is the base; cat.targetHistory = [{ from: 'YYYY-Www', hours }]
-// overrides from that week onward. Week keys use the current year, like the rest of the app.
-const weekKey = (weekNum) => `${new Date().getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+// overrides from that week onward. Keys carry the ISO year, so they stay right across new year.
+const weekKey = (weekNum) => weekKeyOf(weekNum);
 
 const getTargetForWeek = (cat, weekNum) => {
   const key = weekKey(weekNum);
@@ -591,6 +572,20 @@ const cleanOrphanedParallelIds = (weeksData) => {
   return migrated;
 };
 
+// Give repeated block ids unique ids (an older "split" could repeat an id, which made
+// both blocks react to actions on either one)
+const repairDuplicateIds = (weeksData) => {
+  const out = {};
+  for (const [weekId, weekData] of Object.entries(weeksData)) {
+    const fixed = fixDuplicateIds(weekData?.calendar);
+    out[weekId] = fixed === weekData?.calendar ? weekData : { ...weekData, calendar: fixed };
+  }
+  return out;
+};
+
+// True when this browser already held planner data at start-up (as opposed to a first visit)
+const HAD_LOCAL_WEEKS = typeof window !== 'undefined' && window.localStorage.getItem(LOCAL_STORAGE_KEY) !== null;
+
 const getInitialWeeksData = () => {
   if (typeof window === 'undefined') return { 1: generateStandardWeek(1) };
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -607,6 +602,7 @@ const getInitialWeeksData = () => {
         migrated = migrateCategoryColors(migrated);
         migrated = migrateDayStatuses(migrated);
         migrated = cleanOrphanedParallelIds(migrated);
+        migrated = repairDuplicateIds(migrated);
         return migrated;
       }
     } catch (e) {
@@ -614,13 +610,6 @@ const getInitialWeeksData = () => {
     }
   }
   return { 1: generateStandardWeek(1) };
-};
-
-// Merge a week loaded from Firestore/localStorage into the week already in state.
-// Fields missing in the loaded doc (old docs lack points/dayStatuses) keep their local value.
-const mergeLoadedWeek = (prevWeek, loaded) => {
-  if (!loaded) return prevWeek;
-  return { ...(prevWeek || { calendar: [], points: {}, dayStatuses: {} }), ...loaded };
 };
 
 const getInitialWeekIndex = () => {
@@ -1052,7 +1041,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
 
   const handleExport = () => {
     const exportData = {
-      dateRange: { weekStart, weekEnd },
+      dateRange: { weekStart: weekKeyOf(weekStart), weekEnd: weekKeyOf(weekEnd) },
       filters: { categoryId: filterCategory, projectName: filterProject, taskName: filterTask },
       ...reportData,
     };
@@ -1061,7 +1050,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `projekt-rapport_v${weekStart}-${weekEnd}.json`;
+    link.download = `projekt-rapport_${weekKeyOf(weekStart)}_${weekKeyOf(weekEnd)}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1165,21 +1154,21 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
 
           <div className="flex gap-2 items-center mb-2">
             <input
-              type="number"
-              min="1"
-              value={weekStart}
-              onChange={(e) => setWeekStart(parseInt(e.target.value) || 1)}
-              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
-              placeholder="v"
+              type="week"
+              value={weekKeyOf(weekStart)}
+              onChange={(e) => { const idx = weekIndexFromKey(e.target.value); if (idx !== null) setWeekStart(Math.max(1, idx)); }}
+              className="flex-1 min-w-0 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              aria-label="Från vecka"
+              title="Från vecka (år-vecka)"
             />
             <span className="text-zinc-400 text-xs">→</span>
             <input
-              type="number"
-              min="1"
-              value={weekEnd}
-              onChange={(e) => setWeekEnd(parseInt(e.target.value) || 1)}
-              className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
-              placeholder="v"
+              type="week"
+              value={weekKeyOf(weekEnd)}
+              onChange={(e) => { const idx = weekIndexFromKey(e.target.value); if (idx !== null) setWeekEnd(Math.max(1, idx)); }}
+              className="flex-1 min-w-0 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-zinc-900"
+              aria-label="Till vecka"
+              title="Till vecka (år-vecka)"
             />
           </div>
           <div className="flex gap-2">
@@ -1344,13 +1333,13 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
           <button
             onClick={() => {
               // Build text summary from filtered report data
-              const allBlocks = Object.values(weeksData)
-                .filter((wd, i) => (i + 1) >= weekStart && (i + 1) <= weekEnd)
-                .flatMap((wd, i) => {
-                  const weekNum = Object.keys(weeksData).map(Number).sort((a, b) => a - b)
-                    .filter(k => k >= weekStart && k <= weekEnd)[i];
-                  return (wd.calendar || []).map(b => ({ ...b, _weekNum: weekNum }));
-                });
+              // Pick weeks by their own number (not by position in the list, which breaks
+              // as soon as one week is missing)
+              const allBlocks = Object.keys(weeksData)
+                .map(Number)
+                .filter((k) => Number.isFinite(k) && k >= weekStart && k <= weekEnd)
+                .sort((a, b) => a - b)
+                .flatMap((weekNum) => (weeksData[weekNum]?.calendar || []).map(b => ({ ...b, _weekNum: weekNum })));
               const q = freeTextFilter?.toLowerCase();
               const filtered = allBlocks.filter(b => {
                 if (b.status === 'inactive') return false;
@@ -1389,7 +1378,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
               else if (filterProject) title += `: ${filterProject}`;
 
               let text = `${title}\n`;
-              text += `Period: v.${weekStart}–${weekEnd} (${formatDate(startDate)} – ${formatDate(endDate)})\n`;
+              text += `Period: ${weekLabel(weekStart, { prefix: 'v.' })}–${weekLabel(weekEnd, { prefix: 'v.' })} (${formatDate(startDate)} – ${formatDate(endDate)})\n`;
               text += `${'─'.repeat(40)}\n\n`;
 
               const doneHours = filtered.filter(b => b.status === 'done').reduce((s, b) => s + b.duration, 0);
@@ -1437,6 +1426,7 @@ function ReportSidebar({ open, onClose, weeksData, currentWeekIndex, categories,
 export default function ElasticPlanner() {
   const [currentWeekIndex, setCurrentWeekIndex] = useState(getInitialWeekIndex);
   const [weeksData, setWeeksData] = useState(getInitialWeeksData);
+  const initialWeeksRef = useRef(weeksData);
   const [categories, setCategories] = useState(() => {
     try {
       const saved = localStorage.getItem(CATEGORIES_KEY);
@@ -1538,10 +1528,16 @@ export default function ElasticPlanner() {
   // --- Auth & Firestore sync ---
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'synced' | 'error'
+  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'synced' | 'offline' | 'error'
+  const [cloudReady, setCloudReady] = useState(false); // settings are loaded, week sync may start
+  const [weeksReady, setWeeksReady] = useState(false); // the cloud's weeks have arrived
+  const [legacyConflicts, setLegacyConflicts] = useState(null); // first-run differences awaiting a choice
+  const [legacyBusy, setLegacyBusy] = useState(false);
+  const syncRef = useRef(null);
+  const lastSettingsJsonRef = useRef(null); // settings as last agreed with the cloud
+  const lastBankJsonRef = useRef(null);
   const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
   const firestoreLoadedRef = useRef(false);
-  const loadingFromFirestoreRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = onAuthChange(async (user) => {
@@ -1551,7 +1547,7 @@ export default function ElasticPlanner() {
         setUser(user.uid);
         // Check if Firestore has data for this user
         const hasData = await hasFirestoreData();
-        if (!hasData) {
+        if (hasData === false) {
           // No Firestore data — offer to migrate from localStorage
           const hasLocal = localStorage.getItem(LOCAL_STORAGE_KEY);
           if (hasLocal) {
@@ -1559,11 +1555,23 @@ export default function ElasticPlanner() {
           } else {
             // No local data either, just start saving to Firestore
             firestoreLoadedRef.current = true;
+            setCloudReady(true);
           }
         } else {
-          // Load from Firestore and replace local state
-          setSyncStatus('syncing');
-          loadingFromFirestoreRef.current = true;
+          // First visit in this browser and nothing done yet: the generated example week is
+          // not real data. Start from the cloud alone and skip the "which version" question.
+          const untouched = Object.entries(weeksRef.current).every(
+            ([id, w]) => w === initialWeeksRef.current[id] || isEmptyWeek(w)
+          );
+          if (hasData === true && !HAD_LOCAL_WEEKS && untouched) {
+            const syncKey = `elastic-planner-sync:${user.uid}`;
+            if (!localStorage.getItem(syncKey)) {
+              setWeeksData({});
+              localStorage.setItem(syncKey, JSON.stringify({ v: 1, reconciled: true, dirty: {} }));
+            }
+          }
+          // Load settings from Firestore (hasData is null when offline: the load then fails
+          // quietly and the cached settings stay)
           try {
             const [fsSettings, fsBankData, fsTemplateData] = await Promise.all([
               loadSettings(),
@@ -1583,7 +1591,13 @@ export default function ElasticPlanner() {
             if (fsSettings?.projectHistory) {
               setProjectHistory(fsSettings.projectHistory);
             }
-            if (fsBankData) setBankItems(fsBankData);
+            if (fsSettings) {
+              lastSettingsJsonRef.current = stableStringify({ categories: fsSettings.categories || null, projectHistory: fsSettings.projectHistory || null });
+            }
+            if (fsBankData) {
+              lastBankJsonRef.current = stableStringify(fsBankData);
+              setBankItems(fsBankData);
+            }
             if (fsTemplateData) {
               if (fsTemplateData.templates) {
                 localStorage.setItem('elastic-planner-templates', JSON.stringify(fsTemplateData.templates));
@@ -1592,31 +1606,18 @@ export default function ElasticPlanner() {
                 localStorage.setItem(DEFAULT_TEMPLATE_KEY, JSON.stringify(fsTemplateData.defaultTemplate));
               }
             }
-            // Load current week from Firestore
-            const [fsWeek, fsPrevWeek] = await Promise.all([
-              loadWeek(currentWeekIndex),
-              currentWeekIndex > 1 ? loadWeek(currentWeekIndex - 1) : Promise.resolve(null),
-            ]);
-            setWeeksData(prev => {
-              const next = { ...prev };
-              if (fsWeek) next[currentWeekIndex] = mergeLoadedWeek(prev[currentWeekIndex], fsWeek);
-              if (fsPrevWeek) next[currentWeekIndex - 1] = mergeLoadedWeek(prev[currentWeekIndex - 1], fsPrevWeek);
-              return next;
-            });
+            // Weeks are loaded and kept current by the live week sync, started via cloudReady
             firestoreLoadedRef.current = true;
-            setTimeout(() => { loadingFromFirestoreRef.current = false; }, 100);
-            setSyncStatus('synced');
-            setTimeout(() => setSyncStatus(null), 2000);
           } catch (err) {
             console.error('Firestore load failed:', err);
-            setSyncStatus('error');
             firestoreLoadedRef.current = true;
-            loadingFromFirestoreRef.current = false;
           }
+          setCloudReady(true);
         }
       } else {
         setUser(null);
         firestoreLoadedRef.current = false;
+        setCloudReady(false);
         setSyncStatus(null);
       }
     });
@@ -1628,63 +1629,96 @@ export default function ElasticPlanner() {
     setShowMigrationPrompt(false);
     try {
       const result = await migrateFromLocalStorage();
-      if (result.migrated) {
-        firestoreLoadedRef.current = true;
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus(null), 3000);
-      } else {
-        firestoreLoadedRef.current = true;
-        setSyncStatus('error');
-      }
+      if (!result.migrated) setSyncStatus('error');
     } catch (err) {
       console.error('Migration failed:', err);
-      firestoreLoadedRef.current = true;
       setSyncStatus('error');
     }
+    // The week sync uploads any week the migration did not get to
+    firestoreLoadedRef.current = true;
+    setCloudReady(true);
   };
 
+  // Declining means staying local: log out so nothing is uploaded
   const skipMigration = () => {
     setShowMigrationPrompt(false);
-    firestoreLoadedRef.current = true;
+    logout();
   };
 
   // --- Undo/Redo system ---
+  // An entry remembers one week before and after an action. Undo applies the inverse of
+  // the action to the week as it is now, so changes that arrived from the cloud in the
+  // meantime stay. Imports that touch every week keep a full snapshot ('all').
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const isUndoRedo = useRef(false);
   const MAX_UNDO = 30;
+  const weeksRef = useRef(weeksData);
+  weeksRef.current = weeksData;
+  const currentWeekRef = useRef(currentWeekIndex);
+  currentWeekRef.current = currentWeekIndex;
 
-  const pushUndo = useCallback((prevWeeksData) => {
+  const copyOf = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+
+  const pushUndo = useCallback((prevWeeksData, scope = 'week') => {
     if (isUndoRedo.current) return;
-    undoStack.current = [...undoStack.current.slice(-(MAX_UNDO - 1)), JSON.parse(JSON.stringify(prevWeeksData))];
+    const stack = undoStack.current;
+    // The state before this action is the state after the previous one
+    const top = stack[stack.length - 1];
+    if (top && top.kind === 'week' && !top.hasAfter) {
+      top.after = copyOf(prevWeeksData[top.week]);
+      top.hasAfter = true;
+    }
+    const entry = scope === 'all'
+      ? { kind: 'all', before: copyOf(prevWeeksData) }
+      : { kind: 'week', week: currentWeekRef.current, before: copyOf(prevWeeksData[currentWeekRef.current]), hasAfter: false };
+    undoStack.current = [...stack.slice(-(MAX_UNDO - 1)), entry];
     redoStack.current = [];
   }, []);
 
-  const handleUndo = useCallback(() => {
-    if (undoStack.current.length === 0) return;
-    const prev = undoStack.current.pop();
-    isUndoRedo.current = true;
-    setWeeksData((current) => {
-      redoStack.current.push(JSON.parse(JSON.stringify(current)));
-      return prev;
+  // Changes from the cloud are not user actions: freeze the "after" of entries for those
+  // weeks at the state just before the cloud change, so undo can tell the two apart.
+  const freezeHistoryFor = (weekIds, weeksBefore) => {
+    [undoStack.current, redoStack.current].forEach((stack) => {
+      stack.forEach((entry) => {
+        if (entry.kind === 'week' && !entry.hasAfter && weekIds.includes(String(entry.week))) {
+          entry.after = copyOf(weeksBefore[entry.week]);
+          entry.hasAfter = true;
+        }
+      });
     });
-    setUndoToast('↩ Ångrade');
-    setTimeout(() => { isUndoRedo.current = false; }, 50);
-    setTimeout(() => setUndoToast(null), 1500);
-  }, []);
+  };
 
-  const handleRedo = useCallback(() => {
-    if (redoStack.current.length === 0) return;
-    const next = redoStack.current.pop();
+  const stepHistory = (from, to, toast) => {
+    if (from.current.length === 0) return;
+    const entry = from.current.pop();
+    const cur = weeksRef.current;
+    let next;
+    if (entry.kind === 'all') {
+      to.current.push({ kind: 'all', before: copyOf(cur) });
+      next = entry.before;
+    } else {
+      const curWeek = cur[entry.week];
+      const blank = { calendar: [], points: {}, dayStatuses: {} };
+      let restored;
+      if (entry.hasAfter && !weeksEqual(entry.after, curWeek)) {
+        // The week changed since the action (from the cloud): undo only the action itself
+        restored = { ...(curWeek || {}), ...mergeWeek(entry.after || blank, entry.before || blank, curWeek || blank) };
+      } else {
+        restored = entry.before === undefined ? blank : entry.before;
+      }
+      to.current.push({ kind: 'week', week: entry.week, before: copyOf(curWeek), after: copyOf(restored), hasAfter: true });
+      next = { ...cur, [entry.week]: restored };
+    }
     isUndoRedo.current = true;
-    setWeeksData((current) => {
-      undoStack.current.push(JSON.parse(JSON.stringify(current)));
-      return next;
-    });
-    setUndoToast('↪ Omgjorde');
+    setWeeksData(next);
+    setUndoToast(toast);
     setTimeout(() => { isUndoRedo.current = false; }, 50);
     setTimeout(() => setUndoToast(null), 1500);
-  }, []);
+  };
+
+  const handleUndo = useCallback(() => stepHistory(undoStack, redoStack, '↩ Ångrade'), []);
+  const handleRedo = useCallback(() => stepHistory(redoStack, undoStack, '↪ Omgjorde'), []);
 
   const fileInputRef = useRef(null);
   const realTodayIndex = (new Date().getDay() + 6) % 7;
@@ -1746,42 +1780,150 @@ export default function ElasticPlanner() {
     setWeeksData(newData);
   };
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(weeksData));
-    // Sync current week to Firestore (skip if we just loaded from Firestore)
-    if (authUser && firestoreLoadedRef.current && !loadingFromFirestoreRef.current) {
-      const weekData = weeksData[currentWeekIndex];
-      if (weekData?.calendar) {
-        saveWeek(currentWeekIndex, weekData).catch(err =>
-          console.error('Firestore week save failed:', err)
-        );
-      }
+  // Cache all weeks in this browser. Debounced: a resize fires many changes per second.
+  const localSaveTimer = useRef(null);
+  const writeLocalCache = useCallback(() => {
+    if (localSaveTimer.current) { clearTimeout(localSaveTimer.current); localSaveTimer.current = null; }
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(weeksRef.current));
+    } catch (err) {
+      // Storage full: the cloud still gets the changes; only the offline cache is stale
+      console.warn('Kunde inte spara lokal kopia:', err);
     }
-  }, [weeksData, authUser, currentWeekIndex]);
+  }, []);
+
+  useEffect(() => {
+    if (localSaveTimer.current) clearTimeout(localSaveTimer.current);
+    localSaveTimer.current = setTimeout(writeLocalCache, 400);
+    // Tell the week sync; it works out which weeks really changed and writes only those
+    if (syncRef.current) syncRef.current.notifyLocalChange(weeksData);
+  }, [weeksData, writeLocalCache]);
 
   useEffect(() => {
     localStorage.setItem(CURRENT_WEEK_KEY, String(currentWeekIndex));
-    // Load week from Firestore when switching weeks
-    if (authUser && firestoreLoadedRef.current) {
-      loadingFromFirestoreRef.current = true;
-      const prevIndex = currentWeekIndex - 1;
-      const loads = [loadWeek(currentWeekIndex)];
-      // Also fetch previous week so its Sunday can be shown as an edge column
-      if (prevIndex >= 1 && !weeksData[prevIndex]) loads.push(loadWeek(prevIndex));
-      Promise.all(loads).then(([fsWeek, fsPrevWeek]) => {
-        setWeeksData(prev => {
+  }, [currentWeekIndex]);
+
+  // Never lose the last edit to the debounce: write the cache when the page is hidden or closed
+  useEffect(() => {
+    const onHidden = () => { if (document.visibilityState === 'hidden') writeLocalCache(); };
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', writeLocalCache);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', writeLocalCache);
+    };
+  }, [writeLocalCache]);
+
+  // Live week sync with the cloud (see weekSync.js)
+  useEffect(() => {
+    if (!authUser || !cloudReady) return undefined;
+    const sync = createWeekSync({
+      adapter: weeksAdapter(authUser.uid),
+      getWeeks: () => weeksRef.current,
+      applyWeeks: (patch) => {
+        freezeHistoryFor(Object.keys(patch), weeksRef.current);
+        setWeeksData((prev) => {
           const next = { ...prev };
-          if (fsWeek) next[currentWeekIndex] = mergeLoadedWeek(prev[currentWeekIndex], fsWeek);
-          if (fsPrevWeek) next[prevIndex] = mergeLoadedWeek(prev[prevIndex], fsPrevWeek);
+          Object.entries(patch).forEach(([id, week]) => {
+            next[id] = { ...(prev[id] || {}), ...week, calendar: fixDuplicateIds(week.calendar) };
+          });
           return next;
         });
-        setTimeout(() => { loadingFromFirestoreRef.current = false; }, 100);
-      }).catch(err => {
-        console.error('Firestore week load failed:', err);
-        loadingFromFirestoreRef.current = false;
-      });
+      },
+      storage: window.localStorage,
+      storageKey: `elastic-planner-sync:${authUser.uid}`,
+      onStatus: (status) => {
+        setSyncStatus(status);
+        if (status === 'synced') setTimeout(() => setSyncStatus((s) => (s === 'synced' ? null : s)), 2000);
+      },
+      onReady: () => setWeeksReady(true),
+      onLegacyConflicts: (conflicts) => setLegacyConflicts(conflicts),
+    });
+    syncRef.current = sync;
+    setSyncStatus('syncing'); // until the cloud's weeks have arrived; the sync reports from then on
+    sync.start();
+    sync.notifyLocalChange(weeksRef.current);
+
+    // Offline at start: do not wait for the cloud forever before the app behaves normally
+    const offlineTimer = setTimeout(() => {
+      if (!sync.isReady()) { setWeeksReady(true); setSyncStatus('offline'); }
+    }, 6000);
+    const onOnline = () => sync.retry();
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') { writeLocalCache(); sync.flushNow(); }
+    };
+    const onPageHide = () => { writeLocalCache(); sync.flushNow(); };
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      clearTimeout(offlineTimer);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+      sync.stop();
+      syncRef.current = null;
+      setWeeksReady(false);
+      setLegacyConflicts(null);
+    };
+  }, [authUser, cloudReady]);
+
+  const resolveLegacyConflicts = async (choice) => {
+    if (!syncRef.current) return;
+    setLegacyBusy(true);
+    try {
+      await syncRef.current.resolveLegacy(choice);
+      setLegacyConflicts(null);
+    } catch (err) {
+      console.error('Kunde inte spara säkerhetskopian:', err);
+      alert('Det gick inte att spara säkerhetskopian till molnet (ingen anslutning?). Inget har ändrats. Försök igen om en stund.');
     }
-  }, [currentWeekIndex, authUser]);
+    setLegacyBusy(false);
+  };
+
+  // Without an account there is no cloud to wait for
+  const canInitWeeks = !authLoading && (authUser ? weeksReady : true);
+
+  // Live settings and Lådan: changes from another device arrive without a reload, so a
+  // tab that has been open for days does not write old settings over newer ones.
+  useEffect(() => {
+    if (!authUser || !cloudReady) return undefined;
+    const stopSettings = subscribeUserDoc(authUser.uid, 'settings', 'config', (data) => {
+      const remoteJson = stableStringify({ categories: data.categories || null, projectHistory: data.projectHistory || null });
+      if (remoteJson === lastSettingsJsonRef.current) return;
+      lastSettingsJsonRef.current = remoteJson;
+      if (data.categories) {
+        setCategories((prev) => {
+          const merged = {};
+          Object.entries(data.categories).forEach(([key, cat]) => {
+            merged[key] = { ...(DEFAULT_CATEGORIES[key] || {}), ...cat, id: key };
+          });
+          return stableStringify(merged) === stableStringify(prev) ? prev : merged;
+        });
+      }
+      if (data.projectHistory) {
+        setProjectHistory((prev) => (stableStringify(prev) === stableStringify(data.projectHistory) ? prev : data.projectHistory));
+      }
+    });
+    const stopBank = subscribeUserDoc(authUser.uid, 'bank', 'items', (data) => {
+      const items = data.items || [];
+      const remoteJson = stableStringify(items);
+      if (remoteJson === lastBankJsonRef.current) return;
+      lastBankJsonRef.current = remoteJson;
+      setBankItems((prev) => (stableStringify(prev) === remoteJson ? prev : items));
+    });
+    return () => { stopSettings(); stopBank(); };
+  }, [authUser, cloudReady]);
+
+  // Write settings only when they differ from what the cloud already has
+  const saveSettingsIfChanged = (cats, history) => {
+    const json = stableStringify({ categories: cats || null, projectHistory: history || null });
+    if (json === lastSettingsJsonRef.current) return;
+    lastSettingsJsonRef.current = json;
+    saveSettings({ categories: cats, projectHistory: history }).catch(err =>
+      console.error('Firestore settings save failed:', err)
+    );
+  };
 
   // v1.27.0: apply the 50 %-from-v39 migration to whatever categories got loaded
   useEffect(() => {
@@ -1791,34 +1933,31 @@ export default function ElasticPlanner() {
 
   useEffect(() => {
     localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-    if (authUser && firestoreLoadedRef.current) {
-      saveSettings({ categories, projectHistory }).catch(err =>
-        console.error('Firestore settings save failed:', err)
-      );
-    }
-  }, [categories, authUser]);
+    if (authUser && cloudReady) saveSettingsIfChanged(categories, projectHistory);
+  }, [categories, authUser, cloudReady]);
 
   useEffect(() => {
     localStorage.setItem(BANK_KEY, JSON.stringify(bankItems));
-    if (authUser && firestoreLoadedRef.current) {
-      saveBank(bankItems).catch(err =>
-        console.error('Firestore bank save failed:', err)
-      );
+    if (authUser && cloudReady) {
+      const json = stableStringify(bankItems);
+      if (json !== lastBankJsonRef.current) {
+        lastBankJsonRef.current = json;
+        saveBank(bankItems).catch(err =>
+          console.error('Firestore bank save failed:', err)
+        );
+      }
     }
-  }, [bankItems, authUser]);
+  }, [bankItems, authUser, cloudReady]);
 
   // Sync project history to Firestore
   useEffect(() => {
-    if (authUser && firestoreLoadedRef.current) {
-      saveSettings({ categories, projectHistory }).catch(err =>
-        console.error('Firestore projectHistory save failed:', err)
-      );
-    }
-  }, [projectHistory, authUser]);
+    if (authUser && cloudReady) saveSettingsIfChanged(categories, projectHistory);
+  }, [projectHistory, authUser, cloudReady]);
 
-  // Apply default template to new weeks
+  // Apply default template to new weeks (only once we know the week really is new:
+  // before the cloud has answered, a missing week may simply not be loaded yet)
   useEffect(() => {
-    if (!weeksData[currentWeekIndex]) {
+    if (canInitWeeks && !weeksData[currentWeekIndex]) {
       const defaultTemplate = localStorage.getItem(DEFAULT_TEMPLATE_KEY);
       if (defaultTemplate) {
         try {
@@ -1851,7 +1990,7 @@ export default function ElasticPlanner() {
         }
       }
     }
-  }, [currentWeekIndex, weeksData]);
+  }, [currentWeekIndex, weeksData, canInitWeeks]);
 
   useEffect(() => {
     document.title = `Elastic Planner v${APP_VERSION}`;
@@ -1932,11 +2071,11 @@ export default function ElasticPlanner() {
   }, []);
 
   useEffect(() => {
-    if (!weeksData[currentWeekIndex]) {
+    if (canInitWeeks && !weeksData[currentWeekIndex]) {
       // Start new weeks empty (default template is applied in the earlier useEffect if set)
-      setWeeksData((prev) => ({ ...prev, [currentWeekIndex]: { calendar: [], points: {} } }));
+      setWeeksData((prev) => (prev[currentWeekIndex] ? prev : { ...prev, [currentWeekIndex]: { calendar: [], points: {} } }));
     }
-  }, [currentWeekIndex, weeksData]);
+  }, [currentWeekIndex, weeksData, canInitWeeks]);
 
   useEffect(() => {
     if (!notificationsEnabled) return;
@@ -2014,9 +2153,9 @@ export default function ElasticPlanner() {
     new Notification('🔔 Elastic Planner — test', { body: 'Notifikationer fungerar!' });
   };
 
-  const updateCurrentWeek = (newCalendar, newPoints) => {
+  const updateCurrentWeek = (newCalendar, newPoints, { undo = true } = {}) => {
+    if (undo) pushUndo(weeksRef.current);
     setWeeksData((prev) => {
-      pushUndo(prev);
       return {
         ...prev,
         [currentWeekIndex]: {
@@ -2031,10 +2170,10 @@ export default function ElasticPlanner() {
   // Patch fields on one block in the current week (functional update so it is
   // safe to call from effect cleanups with a stale closure)
   const updateBlockFields = (blockId, fields) => {
+    if (weeksRef.current[currentWeekIndex]?.calendar?.some((b) => b.id === blockId)) pushUndo(weeksRef.current);
     setWeeksData((prev) => {
       const week = prev[currentWeekIndex];
       if (!week?.calendar?.some((b) => b.id === blockId)) return prev;
-      pushUndo(prev);
       return {
         ...prev,
         [currentWeekIndex]: {
@@ -2147,7 +2286,8 @@ export default function ElasticPlanner() {
   };
 
   const resolveCollisions = (allBlocks, changedBlock) => {
-    let blocks = [...allBlocks];
+    // Work on copies: the blocks are shared with earlier states (undo history, sync base)
+    let blocks = allBlocks.map((b) => ({ ...b }));
     let hasChanges = true;
     const MAX_LOOPS = 100;
     let loops = 0;
@@ -2183,7 +2323,7 @@ export default function ElasticPlanner() {
     if (!block) return;
 
     const bankItem = {
-      id: `bank-${Date.now()}`,
+      id: uid('bank'),
       label: block.label,
       type: block.type,
       duration: block.duration,
@@ -2226,7 +2366,7 @@ export default function ElasticPlanner() {
     if (!bankAddLabel.trim()) return;
 
     const bankItem = {
-      id: `bank-${Date.now()}`,
+      id: uid('bank'),
       label: bankAddLabel,
       type: bankAddCategory,
       duration: bankAddDuration,
@@ -2254,7 +2394,7 @@ export default function ElasticPlanner() {
     timestamp = Math.max(7, Math.min(23.9, timestamp));
 
     const newPoint = {
-      id: `point-${Date.now()}`,
+      id: uid('point'),
       day,
       timestamp,
       text,
@@ -2315,6 +2455,7 @@ export default function ElasticPlanner() {
   const handleResizeStart = (e, block) => {
     e.stopPropagation();
     e.preventDefault();
+    pushUndo(weeksRef.current); // one undo step for the whole resize, not one per mouse move
     setDraggedBlock(block);
     setDropIndicator({ type: 'resize', startY: e.clientY, duration: block.duration, id: block.id });
     setSelectedBlockIds([]);
@@ -2330,7 +2471,7 @@ export default function ElasticPlanner() {
       const rawNewDuration = dropIndicator.duration + deltaHours;
       const snappedDuration = Math.max(0.5, Math.round(rawNewDuration * 2) / 2);
       const updatedCalendar = calendar.map((b) => (b.id === dropIndicator.id ? { ...b, duration: snappedDuration } : b));
-      updateCurrentWeek(updatedCalendar, points);
+      updateCurrentWeek(updatedCalendar, points, { undo: false });
     };
 
     const handleMouseUp = () => {
@@ -2338,7 +2479,7 @@ export default function ElasticPlanner() {
       const block = calendar.find((b) => b.id === dropIndicator.id);
       if (block) {
         const newCalendar = autoParallelize(calendar, block);
-        updateCurrentWeek(newCalendar, points);
+        updateCurrentWeek(newCalendar, points, { undo: false });
       }
       setDraggedBlock(null);
       setDropIndicator(null);
@@ -2367,7 +2508,7 @@ export default function ElasticPlanner() {
     if (block.duration < 1) return;
     const part1Duration = block.duration / 2;
     const part1 = { ...block, duration: part1Duration };
-    const part2 = { ...block, id: `${block.id}-split`, start: block.start + part1Duration, duration: part1Duration };
+    const part2 = { ...block, id: uid('block'), start: block.start + part1Duration, duration: part1Duration };
 
     const newCalendar = calendar.filter((b) => b.id !== block.id);
     newCalendar.push(part1, part2);
@@ -2415,7 +2556,7 @@ export default function ElasticPlanner() {
     const { day, hour } = addModal;
     const duration = 0.5;
     const newBlock = {
-      id: `new-${Date.now()}`,
+      id: uid('block'),
       day,
       start: hour,
       duration,
@@ -2573,7 +2714,7 @@ Lätt armhävningspåminnelse
       const dayOfWeek = (dayDate.getDay() + 6) % 7;
 
       // Get ISO week number for this date
-      const weekNum = getISOWeek(dayDate);
+      const weekNum = weekIndexForDate(dayDate);
 
       // Process each section in the day
       day.sections.forEach((section, sectionIndex) => {
@@ -2665,7 +2806,7 @@ Lätt armhävningspåminnelse
       });
     });
 
-    pushUndo(weeksData);
+    pushUndo(weeksData, 'all');
     setWeeksData(newWeeksData);
     setImportModalOpen(false);
   };
@@ -2821,8 +2962,10 @@ Lätt armhävningspåminnelse
     }
 
     if (dropIndicator.type === 'merge') {
+      newCalendar = newCalendar.map((b) => (
+        b.id === dropIndicator.targetBlockId ? { ...b, duration: b.duration + unlinkedBlock.duration } : b
+      ));
       const target = newCalendar.find((b) => b.id === dropIndicator.targetBlockId);
-      if (target) target.duration += unlinkedBlock.duration;
       newCalendar = resolveCollisions(newCalendar, target);
     } else {
       const newBlock = { ...unlinkedBlock, day: dropIndicator.day, start: dropIndicator.hour };
@@ -2888,7 +3031,7 @@ Lätt armhävningspåminnelse
         // Detect format: full backup (has .version) vs legacy (just weeksData)
         if (data.version && data.weeksData) {
           // Full backup
-          pushUndo(weeksData);
+          pushUndo(weeksData, 'all');
           setWeeksData(data.weeksData);
           if (data.categories) setCategories(data.categories);
           if (data.bankItems) setBankItems(data.bankItems);
@@ -2899,7 +3042,7 @@ Lätt armhävningspåminnelse
           alert(`✅ Backup laddad! (v${data.version}, ${data.exportedAt?.slice(0, 10) || 'okänt datum'})`);
         } else {
           // Legacy format — just weeksData
-          pushUndo(weeksData);
+          pushUndo(weeksData, 'all');
           setWeeksData(data);
           alert('✅ Planering laddad! (legacy-format, bara veckdata)');
         }
@@ -2919,7 +3062,7 @@ Lätt armhävningspåminnelse
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target.result);
-        pushUndo(weeksData);
+        pushUndo(weeksData, 'all');
         setWeeksData(imported);
         alert('Laddat!');
       } catch (err) {
@@ -3036,7 +3179,7 @@ Lätt armhävningspåminnelse
               >
                 <ChevronLeft size={16} />
               </button>
-              <span className="text-sm font-bold w-20 text-center">V.{currentWeekIndex}</span>
+              <span className="text-sm font-bold min-w-[5rem] px-1 text-center whitespace-nowrap">{weekLabel(currentWeekIndex)}</span>
               <button
                 onClick={() => setCurrentWeekIndex(currentWeekIndex + 1)}
                 className="hover:bg-white rounded p-1"
@@ -3067,7 +3210,7 @@ Lätt armhävningspåminnelse
                   <div className="fixed inset-0 z-[70]" onClick={() => setWeekMenuOpen(false)} />
                   <div className="absolute left-0 top-full mt-2 z-[71] w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-4 text-sm">
                     <div className="text-[10px] font-bold uppercase text-zinc-400 mb-2">
-                      Vecka {currentWeekIndex} · {formatDate(getDateForDay(currentWeekIndex, 0))}–{formatDate(getDateForDay(currentWeekIndex, 6))}
+                      {weekLabel(currentWeekIndex, { prefix: 'Vecka ' })} · {formatDate(getDateForDay(currentWeekIndex, 0))}–{formatDate(getDateForDay(currentWeekIndex, 6))}
                     </div>
                     <label className="flex items-center gap-2 py-1 cursor-pointer">
                       <input type="checkbox" checked={isVacationWeek} onChange={toggleVacationWeek} />
@@ -3077,7 +3220,7 @@ Lätt armhävningspåminnelse
                     {Object.values(categories).filter(hasAnyTarget).length > 0 && (
                       <>
                         <hr className="my-3 border-zinc-100" />
-                        <div className="text-xs font-bold text-zinc-600 mb-2">Måltimmar från v{currentWeekIndex} och framåt</div>
+                        <div className="text-xs font-bold text-zinc-600 mb-2">Måltimmar från v{weekNumberOf(currentWeekIndex)} och framåt</div>
                         {Object.values(categories).filter(hasAnyTarget).map((cat) => (
                           <div key={cat.id} className="flex items-center gap-2 py-1">
                             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.hex }} />
@@ -3098,7 +3241,7 @@ Lätt armhävningspåminnelse
                             <span className="text-xs text-zinc-400">h/v</span>
                           </div>
                         ))}
-                        <p className="text-[11px] text-zinc-400 mt-2">Veckor före v{currentWeekIndex} behåller sina timmar.</p>
+                        <p className="text-[11px] text-zinc-400 mt-2">Veckor före v{weekNumberOf(currentWeekIndex)} behåller sina timmar.</p>
                       </>
                     )}
                   </div>
@@ -3125,6 +3268,7 @@ Lätt armhävningspåminnelse
               <div className="flex items-center gap-2">
                 {syncStatus === 'syncing' && <span className="text-[10px] text-yellow-500 animate-pulse">Synkar...</span>}
                 {syncStatus === 'synced' && <span className="text-[10px] text-green-600">Synkad</span>}
+                {syncStatus === 'offline' && <span className="text-[10px] text-amber-600" title="Ändringarna är sparade på den här enheten och skickas till molnet när anslutningen är tillbaka.">Ej synkat</span>}
                 {syncStatus === 'error' && <span className="text-[10px] text-red-500">Synkfel</span>}
                 <span className="text-[10px] text-zinc-500 max-w-[80px] truncate" title={authUser.email}>{authUser.displayName?.split(' ')[0] || authUser.email}</span>
                 <button
@@ -3296,11 +3440,11 @@ Lätt armhävningspåminnelse
               <div className="col-span-1 relative border-r-2 border-zinc-300 bg-zinc-50/70">
                 <button
                   onClick={() => setCurrentWeekIndex(prevWeekIndex)}
-                  title={`Förra veckans söndag. Dra block härifrån in i veckan för att kopiera dem. Klicka för att gå till v.${prevWeekIndex}.`}
+                  title={`Förra veckans söndag. Dra block härifrån in i veckan för att kopiera dem. Klicka för att gå till ${weekLabel(prevWeekIndex, { prefix: 'v.' })}.`}
                   className="h-10 w-full flex flex-col items-center justify-center border-b border-zinc-200 sticky top-0 z-20 bg-zinc-100 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200 transition-colors leading-none"
                 >
                   <span className="text-xs font-bold uppercase">
-                    Sön <span className="font-normal normal-case opacity-70">v.{prevWeekIndex}</span>
+                    Sön <span className="font-normal normal-case opacity-70">{weekLabel(prevWeekIndex, { prefix: 'v.' })}</span>
                   </span>
                   <span className="text-[10px] font-normal opacity-70">{formatDate(getDateForDay(prevWeekIndex, 6))}</span>
                 </button>
@@ -3446,7 +3590,7 @@ Lätt armhävningspåminnelse
                           return (
                             <button
                               key={offset}
-                              onClick={() => setAddModal({ day: dIndex, hour: slotStart })}
+                              onClick={(e) => setAddModal({ day: dIndex, hour: slotStart, x: e.clientX, y: e.clientY })}
                               className="w-full flex items-center justify-center opacity-0 hover:opacity-100 hover:bg-black/5 text-zinc-300 hover:text-zinc-500 transition-colors"
                               style={{ height: `${HOUR_HEIGHT / 2}rem` }}
                             >
@@ -3548,7 +3692,7 @@ Lätt armhävningspåminnelse
                               if (action === 'split') splitBlock(block);
                               if (action === 'parallel') createParallelBlock(block);
                               if (action === 'duplicate') {
-                                const newBlock = { ...block, id: `block-${Date.now()}`, start: block.start + block.duration, status: 'planned', parallelId: null };
+                                const newBlock = { ...block, id: uid('block'), start: block.start + block.duration, status: 'planned', parallelId: null };
                                 updateCurrentWeek(resolveCollisions([...calendar, newBlock], newBlock), points);
                               }
                               if (action === 'tobank') addToBank(block.id);
@@ -3653,7 +3797,11 @@ Lätt armhävningspåminnelse
           {!addModal.selectedCategory ? (
             <div
               className="absolute bg-white p-2 rounded-lg shadow-xl border border-zinc-200"
-              style={{
+              style={addModal.x != null ? {
+                // Next to where the slot was clicked, kept inside the window
+                left: `${Math.max(8, Math.min(addModal.x - 60, window.innerWidth - 240))}px`,
+                top: `${Math.max(8, Math.min(addModal.y + 10, window.innerHeight - 70))}px`,
+              } : {
                 left: `${85 + (addModal.day * 150)}px`,
                 top: `${150 + ((addModal.hour - gridStart) * HOUR_HEIGHT * 16)}px`
               }}
@@ -4004,14 +4152,16 @@ Lätt armhävningspåminnelse
                     });
 
                     // Handle overnight overflow — create continuation block on next day
+                    let nextWeekOverflow = null;
                     if (overflowsToNextDay) {
                       const originalBlock = calendar.find(b => b.id === editBlockModal.blockId);
                       const overflowDuration = endTime - 24;
+                      const intoNextWeek = originalBlock.day === 6; // Sunday night ends on next week's Monday
                       const nextDay = (originalBlock.day + 1) % 7;
                       // Remove any existing overflow block from this source
                       updatedCalendar = updatedCalendar.filter(b => b.overflowFrom !== editBlockModal.blockId);
                       const overflowBlock = {
-                        id: `overflow-${Date.now()}`,
+                        id: uid('overflow'),
                         day: nextDay,
                         start: 0,
                         duration: overflowDuration,
@@ -4023,11 +4173,24 @@ Lätt armhävningspåminnelse
                         taskName: editBlockModal.taskName || null,
                         overflowFrom: editBlockModal.blockId,
                       };
-                      updatedCalendar.push(overflowBlock);
+                      if (intoNextWeek) nextWeekOverflow = overflowBlock;
+                      else updatedCalendar.push(overflowBlock);
                     }
 
                     const block = updatedCalendar.find(b => b.id === editBlockModal.blockId);
-                    updateCurrentWeek(resolveCollisions(updatedCalendar, block), points);
+                    if (nextWeekOverflow) {
+                      // Two weeks change: snapshot everything for undo, then write both
+                      pushUndo(weeksRef.current, 'all');
+                      updateCurrentWeek(resolveCollisions(updatedCalendar, block), points, { undo: false });
+                      const nextWeek = currentWeekIndex + 1;
+                      setWeeksData((prev) => {
+                        const existing = prev[nextWeek] || { calendar: [], points: {} };
+                        const kept = (existing.calendar || []).filter((b) => b.overflowFrom !== editBlockModal.blockId);
+                        return { ...prev, [nextWeek]: { ...existing, calendar: resolveCollisions([...kept, nextWeekOverflow], nextWeekOverflow) } };
+                      });
+                    } else {
+                      updateCurrentWeek(resolveCollisions(updatedCalendar, block), points);
+                    }
                     // Update project history
                     if (editBlockModal.projectName && editBlockModal.taskName) {
                       const updatedHistory = updateProjectHistoryRecord(
@@ -4568,7 +4731,7 @@ Lätt armhävningspåminnelse
                         </div>
                       </div>
                       <div className="flex gap-2 items-center mb-2">
-                        <span className="text-xs font-bold text-zinc-600">Måltimmar/v från v{currentWeekIndex}:</span>
+                        <span className="text-xs font-bold text-zinc-600">Måltimmar/v från v{weekNumberOf(currentWeekIndex)}:</span>
                         <input
                           type="number"
                           min="0"
@@ -4772,7 +4935,7 @@ Lätt armhävningspåminnelse
         categories={categories}
         onUpdateBlocks={(blocksToUpdate) => {
           // Update blocks across all weeks
-          pushUndo(weeksData);
+          pushUndo(weeksData, 'all');
           const updatedWeeksData = { ...weeksData };
           const idsToUpdate = new Set(blocksToUpdate.map(b => b.id));
           Object.entries(updatedWeeksData).forEach(([weekId, weekData]) => {
@@ -5061,7 +5224,58 @@ Lätt armhävningspåminnelse
                 onClick={skipMigration}
                 className="flex-1 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-sm font-bold rounded-lg transition-colors"
               >
-                Hoppa &ouml;ver
+                Nej, logga ut
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* First start with the new sync: this device's cached weeks differ from the cloud */}
+      {legacyConflicts && legacyConflicts.length > 0 && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-zinc-200 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-zinc-900 mb-2">Den här enheten och molnet skiljer sig</h3>
+            <p className="text-sm text-zinc-600 mb-3">
+              Appen har fått en säkrare synk. Innan den tar över behöver du välja en gång vilken version som gäller
+              för {legacyConflicts.length === 1 ? 'en vecka' : `${legacyConflicts.length} veckor`} där den här enhetens kopia inte stämmer med molnet.
+            </p>
+            <ul className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg p-3 mb-3 max-h-40 overflow-y-auto space-y-1">
+              {[...legacyConflicts].sort((a, b) => Number(a.id) - Number(b.id)).map(({ id, diff }) => {
+                const parts = [];
+                if (diff.changed) parts.push(`${diff.changed} block olika`);
+                if (diff.onlyLocal) parts.push(`${diff.onlyLocal} bara här`);
+                if (diff.onlyServer) parts.push(`${diff.onlyServer} bara i molnet`);
+                if (diff.otherChanged) parts.push('dagstatus/punkter olika');
+                return (
+                  <li key={id}>
+                    <span className="font-bold text-zinc-800">{weekLabel(Number(id), { prefix: 'v.' })}</span>: {parts.join(', ')}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="text-xs text-zinc-500 mb-4">
+              <span className="font-bold text-zinc-700">Den här enheten</span> (datorn du brukar planera på): block som skiljer sig
+              får den här enhetens version, och block som bara finns i molnet läggs till. Inget tas bort.
+              <br />
+              <span className="font-bold text-zinc-700">Molnet</span> (en enhet du sällan använder): den här enhetens kopia ersätts av molnets.
+              <br />
+              Det som ersätts sparas som säkerhetskopia.
+            </p>
+            <div className="flex gap-3">
+              <button
+                disabled={legacyBusy}
+                onClick={() => resolveLegacyConflicts('local')}
+                className="flex-1 px-4 py-2 bg-zinc-900 hover:bg-black disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
+              >
+                Den här enheten
+              </button>
+              <button
+                disabled={legacyBusy}
+                onClick={() => resolveLegacyConflicts('cloud')}
+                className="flex-1 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-zinc-700 text-sm font-bold rounded-lg transition-colors"
+              >
+                Molnet
               </button>
             </div>
           </div>
@@ -5115,8 +5329,6 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
   const [localTask, setLocalTask] = useState(block.taskName || '');
   const draftRef = useRef({ label: block.label, projectName: block.projectName || '', taskName: block.taskName || '', dirty: false });
   const inputRef = useRef(null);
-  // Project/task fields need room: only for blocks of at least 1 h
-  const showProjectFields = block.duration >= 1;
 
   const draftFromBlock = () => ({
     label: block.label || '',
@@ -5214,12 +5426,15 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
         }}
         title={readOnly ? 'Dra in i veckan för att kopiera' : undefined}
         className={`
-        block-interactive absolute z-10 flex flex-col overflow-hidden rounded-[2px] transition-all duration-200 shadow-sm border-l-2
+        block-interactive absolute z-10 flex flex-col rounded-[2px] transition-all duration-200 shadow-sm border-l-2
+        ${isEditing ? 'overflow-visible shadow-lg' : 'overflow-hidden'}
         ${readOnly ? 'cursor-grab opacity-60' : 'cursor-pointer'}
         ${isSelected ? 'ring-2 ring-black ring-offset-1 z-50' : 'hover:brightness-95 group/block'}
       `}
         style={{
           ...positionStyle,
+          // While editing, a short block grows so name, project and task always fit
+          ...(isEditing ? { height: 'auto', minHeight: positionStyle.height, zIndex: 70 } : {}),
           ...(isParallel ? {} : { left: '4px', right: '4px' }),
           backgroundColor: isDone ? (cat?.doneHex || '#f4f4f5') : (cat?.hex || '#001219'),
           color: isDone ? (cat?.doneTextHex || '#71717a') : (cat?.textHex || '#fff'),
@@ -5250,7 +5465,7 @@ function Block({ block, isSelected, isEditing, onClick, onDragStart, onResizeSta
                     placeholder="Namn"
                     className="w-full bg-white/20 text-[10px] font-bold uppercase px-1 py-0.5 rounded-sm border border-white/40 focus:outline-none focus:border-white placeholder:text-current placeholder:opacity-40"
                   />
-                  {showProjectFields && (
+                  {(
                     <>
                       <input
                         type="text"

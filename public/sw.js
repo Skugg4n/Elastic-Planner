@@ -1,5 +1,5 @@
 // Elastic Planner Service Worker
-const CACHE_VERSION = 'ep-cache-v2';
+const CACHE_VERSION = 'ep-cache-v3';
 const APP_SHELL = ['/', '/index.html', '/icons/favicon-32.png', '/icons/icon-192.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -22,6 +22,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+  // Only the app's own files. Requests to other origins (Firestore's live connection,
+  // Google sign-in) must go straight to the network: caching a never-ending stream
+  // would stall the sync.
+  if (new URL(req.url).origin !== self.location.origin) return;
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(() => caches.match('/index.html'))
