@@ -5,7 +5,7 @@ import { setUser, loadSettings, saveSettings, loadBank, saveBank, loadTemplates,
 import { currentWeekIndex as currentWeekIndexNow, dateForDay, weekIndexForDate, weekIndexFromKey, weekKeyOf, weekLabel, weekNumberOf } from './weeks.js';
 import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge.js';
 import { createWeekSync } from './weekSync.js';
-import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos } from './timer.js';
+import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, timerTitle } from './timer.js';
 
 const APP_VERSION = '1.31.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
@@ -5569,8 +5569,8 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
       {running ? (
         <div className="flex items-center gap-1.5 pl-2.5 pr-1 py-0.5 rounded-full border border-rose-300 bg-rose-50 text-rose-800">
           <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse flex-none" />
-          <span className="text-xs font-bold max-w-[11rem] truncate" title={`${comboTitle(timer)} (${timer.label || ''})`}>
-            {comboTitle(timer)}
+          <span className="text-xs font-bold max-w-[16rem] truncate" title={[timer.label, comboTitle(timer)].filter(Boolean).join(' · ')}>
+            {timerTitle(timer)}
           </span>
           <span className="text-xs font-mono tabular-nums">{formatClock(minutes)}</span>
           <button

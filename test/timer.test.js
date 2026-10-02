@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   segmentsForInterval, applySegments, newTimerDoc, isForgotten, elapsedMinutes,
-  formatClock, formatHours, comboTitle, parseNewEntry, recentCombos,
+  formatClock, formatHours, comboTitle, timerTitle, parseNewEntry, recentCombos,
 } from '../src/timer.js';
 
 const at = (iso) => new Date(iso); // +02:00 (summer) / +01:00 (winter) = Stockholm wall clock
@@ -87,4 +87,11 @@ test('recent combos: newest first, no catch-all, no inactive, one row per projec
   const combos = recentCombos(weeks, 40);
   assert.deepEqual(combos.map((c) => `${c.projectName}/${c.taskName}`), ['Tivoli 4/skiss', 'Misc/Misc', 'Dalenum/Socme']);
   assert.equal(combos[0].hours, 2);
+});
+
+test('timer title leads with the category and drops a task that repeats the project', () => {
+  assert.equal(timerTitle({ label: 'Jobb', projectName: 'Misc', taskName: 'Misc' }), 'Jobb / Misc');
+  assert.equal(timerTitle({ label: 'Bok', projectName: 'Fotbollsboken', taskName: 'Inlaga' }), 'Bok / Fotbollsboken / Inlaga');
+  assert.equal(timerTitle({ label: 'Jobb', projectName: 'Okonterat', taskName: '' }), 'Jobb / Okonterat');
+  assert.equal(timerTitle({ label: '', projectName: 'Peab', taskName: 'Piktogram' }), 'Peab / Piktogram');
 });

@@ -133,6 +133,15 @@ export const formatHours = (hours) => `${String(Math.round(hours * 10) / 10).rep
 
 export const comboTitle = (c) => (c.taskName ? `${c.projectName} / ${c.taskName}` : c.projectName);
 
+/**
+ * What is ticking, category first: "Jobb / Misc", "Bok / Fotbollsboken / Inlaga".
+ * The task is left out when it only repeats the project ("Misc / Misc").
+ */
+export const timerTitle = (t) => {
+  const task = t.taskName && t.taskName.trim().toLowerCase() !== String(t.projectName || '').trim().toLowerCase() ? t.taskName : '';
+  return [t.label, t.projectName, task].filter(Boolean).join(' / ');
+};
+
 /** "Dalenum / Socme" typed by hand -> project and task. */
 export const parseNewEntry = (text) => {
   const [project, ...rest] = String(text || '').split('/');

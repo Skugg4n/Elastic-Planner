@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Tidur i appen.** Tiden som går syns nu i Elastic, inte bara i Raycast.
-  - I sidhuvudet: projekt och uppgift, klocka som tickar, och knapparna Stoppa och Byt.
+  - I sidhuvudet: kategori, projekt och uppgift (till exempel "Jobb / Misc"), klocka som tickar, och knapparna Stoppa och Byt.
   - I veckan: ett block i dagens kolumn som växer mot nu-linjen medan tiden går.
   - När inget går: knappen "Starta tid" med snabbval bland de senaste projekten och uppgifterna, slaskposten Okonterat, och ett fält för att starta något nytt (`Projekt / Uppgift`).
   - Samma tidtagning som Raycast-extensionen Elastic Tid: starta i den ena, stoppa i den andra.
