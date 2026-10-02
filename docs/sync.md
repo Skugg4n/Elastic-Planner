@@ -22,6 +22,14 @@ godkänner dem i appen. Samma fält som ett block plus `reason` (visas som toolt
 Backend lägger in dem via `addSuggestions` i nexus `planner-write.js` (API: `POST action=suggest`,
 CLI: `node planner-cli.js suggest '{...}'`). Godkännande flyttar posten till `calendar` med `suggestedBy`.
 
+## Tidur (v1.31+)
+Den pågående tidtagningen ligger i `planner/{uid}/state/timer` och delas mellan appen och Raycast-extensionen
+Elastic Tid (`~/raycast-extensions/elastic-tid`, via nexus `planner-api.js`). Appen lyssnar på dokumentet
+(`subscribeTimer`) och startar/stoppar med transaktioner (`startTimerTx`, `stopTimerTx` i `plannerDB.js`) som
+skriver blocket direkt i veckodokumentet. Synken hämtar sedan in blocket som vilken molnändring som helst.
+Reglerna (5 minuter, halvtimmar, förlängning, 12 timmar, Okonterat) finns i `src/timer.js` och MÅSTE vara
+desamma som i nexus `firebase/functions/planner-timer.js`.
+
 ## Regler att hålla
 - Skriv aldrig en vecka till molnet för att den visas. Bara faktiska lokala ändringar skrivs.
 - Mutera aldrig block på plats. Äldre versioner delas med ångra-historiken och synkens bas.

@@ -1,6 +1,7 @@
 import { collection, doc, getDoc, onSnapshot, runTransaction, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, testNet } from "./firebase";
 import { isoYearWeek, isoDateForDay } from "./weeks.js";
+import { segmentsForInterval, applySegments, newTimerDoc, isForgotten } from "./timer.js";
 
 const LS_KEY = "elastic-planner-weeks";
 let currentUid = null;
@@ -181,6 +182,110 @@ export function subscribeUserDoc(uid, collectionName, docId, onData) {
     },
     (err) => console.warn(`Listener on ${collectionName}/${docId} failed:`, err)
   );
+}
+
+// ── Running timer (planner/{uid}/state/timer) ──
+// Same rules as the backend (nexus firebase/functions/planner-timer.js), so a timer
+// started in Raycast can be stopped here and the other way round.
+
+const timerRef = (uid) => doc(db, "planner", uid, "state", "timer");
+
+/** Live timer state. Calls back with the timer document, or { running: false }. */
+export function subscribeTimer(uid, onTimer) {
+  if (!uid) return () => {};
+  return onSnapshot(
+    timerRef(uid),
+    (snap) => {
+      if (snap.metadata.hasPendingWrites) return;
+      const data = snap.exists() ? snap.data() : null;
+      onTimer(data && data.running ? { ...data, updatedAt: null } : { running: false });
+    },
+    (err) => console.warn("Timer listener failed:", err)
+  );
+}
+
+// Inside a transaction: write the blocks for a timer that ends at `end`. All reads first.
+async function finishTimerInTx(tx, uid, timer, end, discard) {
+  const segments = discard ? [] : segmentsForInterval(new Date(timer.startedAt), end);
+  const calendars = new Map();
+  for (const idx of [...new Set(segments.map((seg) => seg.weekIndex))]) {
+    const snap = await tx.get(doc(db, "planner", uid, "weeks", String(idx)));
+    calendars.set(idx, snap.exists() ? (snap.data().calendar || []).map((b) => ({ ...b })) : []);
+  }
+  applySegments(calendars, segments, timer, end);
+  return {
+    write() {
+      calendars.forEach((calendar, idx) => {
+        tx.set(
+          doc(db, "planner", uid, "weeks", String(idx)),
+          { calendar, ...describeWeek(idx), updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+      });
+    },
+    summary: {
+      projectName: timer.projectName || "",
+      taskName: timer.taskName || "",
+      type: timer.type,
+      hours: segments.reduce((sum, seg) => sum + seg.duration, 0),
+      discarded: segments.length === 0,
+    },
+  };
+}
+
+/**
+ * Stop the running timer and write its block(s).
+ * Returns { stopped } where stopped is null when nothing was running, or
+ * { needsEndTime: true } when the timer was clearly left running by mistake.
+ */
+export async function stopTimerTx(uid, { discard = false, endedAt = null, now = new Date() } = {}) {
+  if (testNet.offline) throw new Error("offline (emulator test hook)");
+  let result = { stopped: null };
+  await runTransaction(db, async (tx) => {
+    result = { stopped: null };
+    const snap = await tx.get(timerRef(uid));
+    const timer = snap.exists() ? snap.data() : null;
+    if (!timer || !timer.running) return;
+    const startedAt = new Date(timer.startedAt);
+    let end = now;
+    if (endedAt) {
+      const wanted = new Date(endedAt);
+      if (!Number.isNaN(wanted.getTime())) end = new Date(Math.min(Math.max(wanted.getTime(), startedAt.getTime()), now.getTime()));
+    }
+    if (!discard && !endedAt && isForgotten(timer, now)) {
+      result = { stopped: null, needsEndTime: true };
+      return;
+    }
+    const finish = await finishTimerInTx(tx, uid, timer, end, discard);
+    finish.write();
+    tx.set(timerRef(uid), { running: false, stoppedAt: end.toISOString(), updatedAt: serverTimestamp() });
+    result = { stopped: finish.summary };
+  });
+  return result;
+}
+
+/**
+ * Start a timer. Whatever was running is stopped first and written as a block
+ * (unless it was forgotten: then nothing is written and `stopped.forgotten` says so).
+ */
+export async function startTimerTx(uid, what, { now = new Date() } = {}) {
+  if (testNet.offline) throw new Error("offline (emulator test hook)");
+  const next = newTimerDoc(what, now, "app");
+  let stopped = null;
+  await runTransaction(db, async (tx) => {
+    stopped = null;
+    const snap = await tx.get(timerRef(uid));
+    const running = snap.exists() && snap.data().running ? snap.data() : null;
+    if (running && isForgotten(running, now)) {
+      stopped = { projectName: running.projectName || "", taskName: running.taskName || "", hours: 0, discarded: true, forgotten: true, startedAt: running.startedAt };
+    } else if (running) {
+      const finish = await finishTimerInTx(tx, uid, running, now, false);
+      finish.write();
+      stopped = finish.summary;
+    }
+    tx.set(timerRef(uid), { ...next, updatedAt: serverTimestamp() });
+  });
+  return { stopped, timer: next };
 }
 
 // ── Settings (categories, preferences) ──
