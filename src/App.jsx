@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, LogIn, LogOut, MessageSquare, Music, Palette, PenTool, Plus, RotateCcw, RotateCw, Save, Scissors, Search, Settings, SplitSquareHorizontal, Star, Trash2, Upload, X, Zap } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlignLeft, AlertCircle, Bike, Book, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code, Coffee, Copy, Download, Dumbbell, Edit3, FileText, Heart, LogIn, LogOut, MessageSquare, Music, Palette, PenTool, Play, Plus, RotateCcw, RotateCw, Save, Scissors, Search, Settings, SplitSquareHorizontal, Square, Star, Trash2, Upload, X, Zap } from 'lucide-react';
 import { loginWithGoogle, logout, onAuthChange } from './auth';
-import { setUser, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData, weeksAdapter, subscribeUserDoc } from './plannerDB';
+import { setUser, loadSettings, saveSettings, loadBank, saveBank, loadTemplates, saveTemplates, migrateFromLocalStorage, hasFirestoreData, weeksAdapter, subscribeUserDoc, subscribeTimer, startTimerTx, stopTimerTx } from './plannerDB';
 import { currentWeekIndex as currentWeekIndexNow, dateForDay, weekIndexForDate, weekIndexFromKey, weekKeyOf, weekLabel, weekNumberOf } from './weeks.js';
 import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge.js';
 import { createWeekSync } from './weekSync.js';
+import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, timerTitle } from './timer.js';
 
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.31.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -1869,6 +1870,68 @@ export default function ElasticPlanner() {
     };
   }, [authUser, cloudReady]);
 
+  // --- Running timer (shared with Raycast through Firestore, see timer.js) ---
+  const [timer, setTimer] = useState({ running: false });
+  const [timerNow, setTimerNow] = useState(() => Date.now());
+  const [timerBusy, setTimerBusy] = useState(false);
+
+  useEffect(() => {
+    if (!authUser || !cloudReady) { setTimer({ running: false }); return undefined; }
+    return subscribeTimer(authUser.uid, setTimer);
+  }, [authUser, cloudReady]);
+
+  // Tick while a timer runs, so the clock and the growing block move
+  useEffect(() => {
+    if (!timer.running) return undefined;
+    setTimerNow(Date.now());
+    const tick = setInterval(() => setTimerNow(Date.now()), 15000);
+    return () => clearInterval(tick);
+  }, [timer.running, timer.startedAt]);
+
+  const flashToast = (text) => {
+    setUndoToast(text);
+    setTimeout(() => setUndoToast((current) => (current === text ? null : current)), 2800);
+  };
+
+  const stoppedText = (stopped) => {
+    const name = comboTitle(stopped);
+    if (stopped.forgotten) return `${name} hade glömts och sparades inte`;
+    return stopped.discarded ? `${name}: inget sparat` : `${name}: ${formatHours(stopped.hours)} sparat`;
+  };
+
+  const handleTimerStart = async (what) => {
+    if (!authUser) return;
+    setTimerBusy(true);
+    try {
+      const type = categories[what.type] ? what.type : (categories.job ? 'job' : Object.keys(categories)[0]);
+      const result = await startTimerTx(authUser.uid, { ...what, type, label: categories[type]?.label || '' });
+      flashToast(`▶ ${comboTitle(result.timer)}${result.stopped ? ` · ${stoppedText(result.stopped)}` : ''}`);
+    } catch (err) {
+      console.error('Kunde inte starta tiden:', err);
+      flashToast('Kunde inte starta tiden. Är du uppkopplad?');
+    }
+    setTimerBusy(false);
+  };
+
+  // Returns 'needsEndTime' when the timer was clearly left running and the end must be given
+  const handleTimerStop = async (options = {}) => {
+    if (!authUser) return 'ok';
+    setTimerBusy(true);
+    let outcome = 'ok';
+    try {
+      const result = await stopTimerTx(authUser.uid, options);
+      if (result.needsEndTime) outcome = 'needsEndTime';
+      else flashToast(result.stopped ? `■ ${stoppedText(result.stopped)}` : 'Ingen tid går');
+    } catch (err) {
+      console.error('Kunde inte stoppa tiden:', err);
+      flashToast('Kunde inte stoppa tiden. Är du uppkopplad?');
+    }
+    setTimerBusy(false);
+    return outcome;
+  };
+
+  const timerCombos = useMemo(() => recentCombos(weeksData, getCurrentWeek()), [weeksData]);
+
   const resolveLegacyConflicts = async (choice) => {
     if (!syncRef.current) return;
     setLegacyBusy(true);
@@ -3222,9 +3285,9 @@ Lätt armhävningspåminnelse
 
   return (
     <div className="h-screen bg-zinc-50 font-sans text-zinc-900 select-none flex flex-col overflow-hidden">
-      <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-50">
-        <div className="px-4 py-2 flex justify-between items-center">
-          <div className="flex items-center gap-4">
+      <header className="bg-white border-b border-zinc-200 shadow-sm flex-none z-[65]">
+        <div className="px-4 py-2 flex flex-wrap justify-between items-center gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span className="text-[10px] font-bold uppercase text-zinc-500 bg-zinc-100 border border-zinc-200 rounded-full px-2 py-1">
               v{APP_VERSION}
             </span>
@@ -3371,6 +3434,20 @@ Lätt armhävningspåminnelse
                 📥 Import
               </button>
             </div>
+            {authUser && cloudReady && (
+              <>
+                <div className="h-6 w-px bg-zinc-200" />
+                <TimerControl
+                  timer={timer}
+                  now={timerNow}
+                  categories={categories}
+                  combos={timerCombos}
+                  busy={timerBusy}
+                  onStart={handleTimerStart}
+                  onStop={handleTimerStop}
+                />
+              </>
+            )}
           </div>
           <div className="flex gap-6 items-center">
             {(() => {
@@ -3692,6 +3769,43 @@ Lätt armhävningspåminnelse
                         }}
                       />
                     )}
+
+                    {isToday && timer.running && (() => {
+                      // The time that is running right now, as a block that grows towards the now-line
+                      const started = new Date(timer.startedAt);
+                      const nowDate = new Date(timerNow);
+                      const sameDay = started.toDateString() === nowDate.toDateString();
+                      const startHour = sameDay ? started.getHours() + started.getMinutes() / 60 : 0;
+                      const nowHour = nowDate.getHours() + nowDate.getMinutes() / 60;
+                      if (nowHour < gridStart) return null;
+                      const from = Math.max(startHour, gridStart);
+                      const color = categories[timer.type]?.hex || '#52525b';
+                      return (
+                        <div
+                          className="absolute z-[45] pointer-events-none overflow-hidden rounded-t-[2px]"
+                          style={{
+                            top: `${(from - gridStart) * HOUR_HEIGHT}rem`,
+                            height: `${Math.max((nowHour - from) * HOUR_HEIGHT, 1.9)}rem`,
+                            left: '4px',
+                            right: '4px',
+                            border: `2px solid ${color}`,
+                            borderBottom: `2px dashed ${color}`,
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-white" />
+                          <div className="absolute inset-0" style={{ backgroundColor: color, opacity: 0.14 }} />
+                          <div className="relative px-1.5 py-1 leading-none text-zinc-700">
+                            <span className="flex items-center gap-1 text-[10px] font-bold uppercase">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse flex-none" />
+                              <span className="truncate">{timer.label || categories[timer.type]?.label} · pågår</span>
+                            </span>
+                            <span className="block mt-0.5 text-[9px] truncate">
+                              {comboTitle(timer)} · {formatClock(elapsedMinutes(timer.startedAt, nowDate))}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {isToday && currentTime >= gridStart && currentTime <= 24 && (
                       <div
@@ -5316,10 +5430,11 @@ Lätt armhävningspåminnelse
       {legacyConflicts && legacyConflicts.length > 0 && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white border border-zinc-200 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
-            <h3 className="text-lg font-bold text-zinc-900 mb-2">Den här enheten och molnet skiljer sig</h3>
+            <h3 className="text-lg font-bold text-zinc-900 mb-2">Datorn och molnkopian skiljer sig</h3>
             <p className="text-sm text-zinc-600 mb-3">
-              Appen har fått en säkrare synk. Innan den tar över behöver du välja en gång vilken version som gäller
-              för {legacyConflicts.length === 1 ? 'en vecka' : `${legacyConflicts.length} veckor`} där den här enhetens kopia inte stämmer med molnet.
+              Ingen fara, inget har ändrats. I {legacyConflicts.length === 1 ? 'en vecka' : `${legacyConflicts.length} veckor`} stämmer
+              inte det som ligger i den här webbläsaren med kopian i molnet. Det beror oftast på äldre fel i sparningen
+              eller på block som lagts in utifrån (Raycast, Emma). Välj en gång vad som ska gälla.
             </p>
             <ul className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg p-3 mb-3 max-h-40 overflow-y-auto space-y-1">
               {[...legacyConflicts].sort((a, b) => Number(a.id) - Number(b.id)).map(({ id, diff }) => {
@@ -5327,7 +5442,7 @@ Lätt armhävningspåminnelse
                 if (diff.changed) parts.push(`${diff.changed} block olika`);
                 if (diff.onlyLocal) parts.push(`${diff.onlyLocal} bara här`);
                 if (diff.onlyServer) parts.push(`${diff.onlyServer} bara i molnet`);
-                if (diff.otherChanged) parts.push('dagstatus/punkter olika');
+                if (diff.otherChanged) parts.push('dagstatus, punkter eller förslag olika');
                 return (
                   <li key={id}>
                     <span className="font-bold text-zinc-800">{weekLabel(Number(id), { prefix: 'v.' })}</span>: {parts.join(', ')}
@@ -5336,12 +5451,13 @@ Lätt armhävningspåminnelse
               })}
             </ul>
             <p className="text-xs text-zinc-500 mb-4">
-              <span className="font-bold text-zinc-700">Den här enheten</span> (datorn du brukar planera på): block som skiljer sig
-              får den här enhetens version, och block som bara finns i molnet läggs till. Inget tas bort.
+              <span className="font-bold text-zinc-700">Slå ihop</span> (rätt val på datorn du brukar planera på): där de skiljer sig
+              gäller den här datorns version, och det som bara finns i molnet läggs till. Inget tas bort.
               <br />
-              <span className="font-bold text-zinc-700">Molnet</span> (en enhet du sällan använder): den här enhetens kopia ersätts av molnets.
+              <span className="font-bold text-zinc-700">Använd molnets</span>: den här webbläsarens kopia ersätts av molnets.
+              Välj det bara om du vet att kopian här är gammal.
               <br />
-              Det som ersätts sparas som säkerhetskopia.
+              Det som ersätts sparas som säkerhetskopia. Frågan kommer en gång per webbläsare.
             </p>
             <div className="flex gap-3">
               <button
@@ -5349,14 +5465,14 @@ Lätt armhävningspåminnelse
                 onClick={() => resolveLegacyConflicts('local')}
                 className="flex-1 px-4 py-2 bg-zinc-900 hover:bg-black disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
               >
-                Den här enheten
+                Slå ihop
               </button>
               <button
                 disabled={legacyBusy}
                 onClick={() => resolveLegacyConflicts('cloud')}
                 className="flex-1 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-zinc-700 text-sm font-bold rounded-lg transition-colors"
               >
-                Molnet
+                Använd molnets
               </button>
             </div>
           </div>
@@ -5393,6 +5509,201 @@ function StatPill({ label, current, total, unit, target, warnBelowTarget, cumFle
         <span className={`text-[9px] font-bold ${cumFlex.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
           totalt: {cumFlex.diff >= 0 ? '+' : ''}{cumFlex.diff}{unit} ({cumFlex.weekCount}v)
         </span>
+      )}
+    </div>
+  );
+}
+
+// Running time in the header: what is ticking, with stop and switch. When nothing runs,
+// the same place starts a timer from the latest project/task combos or the catch-all.
+function TimerControl({ timer, now, categories, combos, busy, onStart, onStop }) {
+  const [open, setOpen] = useState(false);
+  const [newText, setNewText] = useState('');
+  const [newCategory, setNewCategory] = useState('job');
+  const [askEnd, setAskEnd] = useState(false);
+  const [endValue, setEndValue] = useState('');
+  const anchorRef = useRef(null);
+  const [popoverLeft, setPopoverLeft] = useState(0);
+
+  // Open below the control, but never past the right edge of the window
+  const openPopover = () => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (rect) setPopoverLeft(Math.min(0, window.innerWidth - 336 - rect.left));
+    setOpen(true);
+  };
+
+  const running = timer && timer.running;
+  const minutes = running ? elapsedMinutes(timer.startedAt, new Date(now)) : 0;
+  const categoryList = Object.values(categories);
+  const pad = (n) => String(n).padStart(2, '0');
+  const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  const close = () => { setOpen(false); setAskEnd(false); };
+
+  const start = async (what) => {
+    close();
+    setNewText('');
+    await onStart(what);
+  };
+
+  const stop = async (options = {}) => {
+    const outcome = await onStop(options);
+    if (outcome === 'needsEndTime') {
+      // Left running by mistake: ask when the work really ended instead of saving a day-long block
+      setEndValue(toLocalInput(new Date(new Date(timer.startedAt).getTime() + 60 * 60 * 1000)));
+      setAskEnd(true);
+      openPopover();
+    } else {
+      close();
+    }
+  };
+
+  const startTyped = () => {
+    const typed = parseNewEntry(newText);
+    if (!typed.projectName) return;
+    start({ type: categories[newCategory] ? newCategory : categoryList[0]?.id, ...typed });
+  };
+
+  return (
+    <div className="relative" ref={anchorRef}>
+      {running ? (
+        <div className="flex items-center gap-1.5 pl-2.5 pr-1 py-0.5 rounded-full border border-rose-300 bg-rose-50 text-rose-800">
+          <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse flex-none" />
+          <span className="text-xs font-bold max-w-[16rem] truncate" title={[timer.label, comboTitle(timer)].filter(Boolean).join(' · ')}>
+            {timerTitle(timer)}
+          </span>
+          <span className="text-xs font-mono tabular-nums">{formatClock(minutes)}</span>
+          <button
+            onClick={() => stop()}
+            disabled={busy}
+            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full bg-white border border-rose-200 hover:bg-rose-100 disabled:opacity-50"
+            title="Stoppa och spara som block"
+          >
+            <Square size={9} fill="currentColor" /> Stoppa
+          </button>
+          <button
+            onClick={() => (open ? close() : openPopover())}
+            disabled={busy}
+            className="text-[11px] font-bold px-2 py-1 rounded-full bg-white border border-rose-200 hover:bg-rose-100 disabled:opacity-50"
+            title="Byt till något annat. Det som går nu sparas."
+          >
+            Byt
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => (open ? close() : openPopover())}
+          disabled={busy}
+          className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors disabled:opacity-50"
+          aria-label="Starta tid"
+        >
+          <Play size={11} fill="currentColor" /> Starta tid
+        </button>
+      )}
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[70]" onClick={close} />
+          <div
+            className="absolute top-full mt-2 z-[71] w-80 bg-white border border-zinc-200 rounded-xl shadow-xl p-3 text-sm"
+            style={{ left: `${popoverLeft}px` }}
+          >
+            {askEnd ? (
+              <div>
+                <div className="text-xs font-bold text-zinc-700 mb-1">När slutade du?</div>
+                <p className="text-[11px] text-zinc-500 mb-2">
+                  {comboTitle(timer)} har gått i {Math.round(minutes / 60)} timmar och glömdes troligen på. Ange när du faktiskt slutade.
+                </p>
+                <input
+                  type="datetime-local"
+                  value={endValue}
+                  min={toLocalInput(new Date(timer.startedAt))}
+                  max={toLocalInput(new Date())}
+                  onChange={(e) => setEndValue(e.target.value)}
+                  className="w-full border border-zinc-300 rounded-md px-2 py-1.5 text-sm mb-2"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => endValue && stop({ endedAt: new Date(endValue).toISOString() })}
+                    className="flex-1 px-3 py-1.5 bg-zinc-900 hover:bg-black text-white text-xs font-bold rounded-lg"
+                  >
+                    Spara med den sluttiden
+                  </button>
+                  <button
+                    onClick={() => stop({ discard: true })}
+                    className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-lg"
+                  >
+                    Släng
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-[10px] font-bold uppercase text-zinc-400 mb-1.5">{running ? 'Byt till' : 'Starta tid på'}</div>
+                <button
+                  onClick={() => start({ unassigned: true })}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md border border-dashed border-zinc-300 hover:bg-zinc-50 text-left mb-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 flex-none" />
+                  <span className="font-bold text-zinc-700">Okonterat</span>
+                  <span className="text-[11px] text-zinc-400 ml-auto">kontera senare</span>
+                </button>
+                <div className="max-h-64 overflow-y-auto -mx-1">
+                  {combos.map((c) => (
+                    <button
+                      key={c.key}
+                      onClick={() => start({ type: c.type, projectName: c.projectName, taskName: c.taskName })}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-zinc-100 text-left"
+                    >
+                      <span className="w-2 h-2 rounded-full flex-none" style={{ backgroundColor: categories[c.type]?.hex || '#a1a1aa' }} />
+                      <span className="text-zinc-800 truncate">{comboTitle(c)}</span>
+                      <span className="text-[11px] text-zinc-400 ml-auto flex-none">{categories[c.type]?.label || c.type}</span>
+                    </button>
+                  ))}
+                  {combos.length === 0 && (
+                    <p className="px-3 py-2 text-[11px] text-zinc-400">Inga tidigare projekt att välja bland än.</p>
+                  )}
+                </div>
+                <div className="flex gap-1.5 mt-2 pt-2 border-t border-zinc-100">
+                  <input
+                    type="text"
+                    value={newText}
+                    onChange={(e) => setNewText(e.target.value)}
+                    onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') startTyped(); if (e.key === 'Escape') close(); }}
+                    placeholder="Nytt: Projekt / Uppgift"
+                    className="flex-1 min-w-0 border border-zinc-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-zinc-900"
+                  />
+                  <select
+                    value={categories[newCategory] ? newCategory : categoryList[0]?.id}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="border border-zinc-300 rounded-md px-1 py-1 text-xs bg-white max-w-[6.5rem]"
+                    aria-label="Kategori för nytt"
+                  >
+                    {categoryList.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={startTyped}
+                    disabled={!parseNewEntry(newText).projectName}
+                    className="px-2 py-1 bg-zinc-900 text-white text-xs font-bold rounded-md disabled:opacity-30"
+                    aria-label="Starta tid på det nya"
+                  >
+                    <Play size={11} fill="currentColor" />
+                  </button>
+                </div>
+                {running && (
+                  <button
+                    onClick={() => stop({ discard: true })}
+                    className="mt-2 text-[11px] text-zinc-400 hover:text-rose-600"
+                  >
+                    Släng tiden som går utan att spara
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

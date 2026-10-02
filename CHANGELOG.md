@@ -5,6 +5,21 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-10-02
+
+### Added
+- **Tidur i appen.** Tiden som går syns nu i Elastic, inte bara i Raycast.
+  - I sidhuvudet: kategori, projekt och uppgift (till exempel "Jobb / Misc"), klocka som tickar, och knapparna Stoppa och Byt.
+  - I veckan: ett block i dagens kolumn som växer mot nu-linjen medan tiden går.
+  - När inget går: knappen "Starta tid" med snabbval bland de senaste projekten och uppgifterna, slaskposten Okonterat, och ett fält för att starta något nytt (`Projekt / Uppgift`).
+  - Samma tidtagning som Raycast-extensionen Elastic Tid: starta i den ena, stoppa i den andra.
+  - Samma regler: under fem minuter sparas inget, tiden hamnar på halvtimmar, samma sak direkt igen förlänger blocket, och en timer som gått över tolv timmar frågar när du faktiskt slutade.
+- `src/timer.js` (regler och hjälpfunktioner, speglar nexus `planner-timer.js`) med tester.
+
+### Changed
+- **Engångsfrågan om datorn och molnkopian** är omskriven. Den förklarar varför det skiljer sig, säger att inget har ändrats, och knapparna heter "Slå ihop" och "Använd molnets".
+- Sidhuvudet radbryts i smala fönster i stället för att klippas, och dess menyer ligger över nu-linjen.
+
 ## [1.30.0] - 2026-10-01
 
 ### Added
