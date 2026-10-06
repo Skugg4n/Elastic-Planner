@@ -119,6 +119,30 @@ export const newTimerDoc = (what, now, source = 'app') => {
   };
 };
 
+/**
+ * The end to use when stopping. A chosen end counts only between the start and now:
+ * one before the start (or less than MIN_MINUTES after it) is a slip of the hand,
+ * not a reason to throw the time away, so the caller must ask again.
+ */
+export const resolveEnd = (timer, endedAt, now = new Date()) => {
+  if (!endedAt) return { end: now };
+  const wanted = new Date(endedAt);
+  if (Number.isNaN(wanted.getTime())) return { tooEarly: true };
+  if (wanted.getTime() - new Date(timer.startedAt).getTime() < MIN_MINUTES * 60000) return { tooEarly: true };
+  return { end: wanted > now ? now : wanted };
+};
+
+/** "igår 16:32", "i dag 09:04" or "mån 5 okt 16:32" for when a timer started. */
+export const startedLabel = (startedAt, now = new Date()) => {
+  const d = new Date(startedAt);
+  const dayOf = (x) => Math.floor((x.getTime() - x.getTimezoneOffset() * 60000) / DAY_MS);
+  const diff = dayOf(now) - dayOf(d);
+  const clock = d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  if (diff === 0) return `i dag ${clock}`;
+  if (diff === 1) return `igår ${clock}`;
+  return `${d.toLocaleDateString('sv-SE', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '')} ${clock}`;
+};
+
 export const isForgotten = (timer, now = new Date()) =>
   !!timer && !!timer.running && (now - new Date(timer.startedAt)) / 3600000 > FORGOTTEN_HOURS;
 
@@ -143,9 +167,18 @@ export const timerTitle = (t) => {
 };
 
 /** "Dalenum / Socme" typed by hand -> project and task. */
-export const parseNewEntry = (text) => {
-  const [project, ...rest] = String(text || '').split('/');
-  return { projectName: project.trim(), taskName: rest.join('/').trim() };
+/**
+ * Typed text -> what to start. "Dalenum / Socme" = project and task.
+ * "Bok / Marknadsföring / Ny undersida" = the category first, when the first part is the
+ * name of one of the given categories ([{ id, label }]).
+ */
+export const parseNewEntry = (text, categories = []) => {
+  const parts = String(text || '').split('/').map((p) => p.trim());
+  const category = parts.length >= 2
+    ? categories.find((c) => String(c.label || '').toLowerCase() === parts[0].toLowerCase())
+    : undefined;
+  const [project = '', ...task] = category ? parts.slice(1) : parts;
+  return { ...(category ? { type: category.id } : {}), projectName: project, taskName: task.join(' / ').trim() };
 };
 
 /**

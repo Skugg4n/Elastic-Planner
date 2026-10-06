@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, onSnapshot, runTransaction, setDoc, serverTimestamp } from "firebase/firestore";
 import { db, testNet } from "./firebase";
 import { isoYearWeek, isoDateForDay } from "./weeks.js";
-import { segmentsForInterval, applySegments, newTimerDoc, isForgotten } from "./timer.js";
+import { segmentsForInterval, applySegments, newTimerDoc, isForgotten, resolveEnd } from "./timer.js";
 
 const LS_KEY = "elastic-planner-weeks";
 let currentUid = null;
@@ -246,14 +246,14 @@ export async function stopTimerTx(uid, { discard = false, endedAt = null, now = 
     const snap = await tx.get(timerRef(uid));
     const timer = snap.exists() ? snap.data() : null;
     if (!timer || !timer.running) return;
-    const startedAt = new Date(timer.startedAt);
-    let end = now;
-    if (endedAt) {
-      const wanted = new Date(endedAt);
-      if (!Number.isNaN(wanted.getTime())) end = new Date(Math.min(Math.max(wanted.getTime(), startedAt.getTime()), now.getTime()));
-    }
     if (!discard && !endedAt && isForgotten(timer, now)) {
       result = { stopped: null, needsEndTime: true };
+      return;
+    }
+    const { end, tooEarly } = resolveEnd(timer, discard ? null : endedAt, now);
+    if (tooEarly) {
+      // A chosen end before the start: nothing is written and the timer keeps running
+      result = { stopped: null, tooEarly: true, startedAt: timer.startedAt };
       return;
     }
     const finish = await finishTimerInTx(tx, uid, timer, end, discard);
@@ -265,26 +265,32 @@ export async function stopTimerTx(uid, { discard = false, endedAt = null, now = 
 }
 
 /**
- * Start a timer. Whatever was running is stopped first and written as a block
- * (unless it was forgotten: then nothing is written and `stopped.forgotten` says so).
+ * Start a timer. Whatever was running is stopped first and written as a block.
+ * A forgotten timer (over 12 hours) is left as it is and `needsEndTime` is returned:
+ * the caller must ask when it really ended before anything new starts.
  */
 export async function startTimerTx(uid, what, { now = new Date() } = {}) {
   if (testNet.offline) throw new Error("offline (emulator test hook)");
   const next = newTimerDoc(what, now, "app");
   let stopped = null;
+  let forgotten = null;
   await runTransaction(db, async (tx) => {
     stopped = null;
+    forgotten = null;
     const snap = await tx.get(timerRef(uid));
     const running = snap.exists() && snap.data().running ? snap.data() : null;
     if (running && isForgotten(running, now)) {
-      stopped = { projectName: running.projectName || "", taskName: running.taskName || "", hours: 0, discarded: true, forgotten: true, startedAt: running.startedAt };
-    } else if (running) {
+      forgotten = running;
+      return;
+    }
+    if (running) {
       const finish = await finishTimerInTx(tx, uid, running, now, false);
       finish.write();
       stopped = finish.summary;
     }
     tx.set(timerRef(uid), { ...next, updatedAt: serverTimestamp() });
   });
+  if (forgotten) return { stopped: null, needsEndTime: true, timer: forgotten };
   return { stopped, timer: next };
 }
 
