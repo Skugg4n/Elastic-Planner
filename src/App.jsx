@@ -7,7 +7,7 @@ import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge
 import { createWeekSync } from './weekSync.js';
 import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, startedLabel, timerTitle } from './timer.js';
 
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.32.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
