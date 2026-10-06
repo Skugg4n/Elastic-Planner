@@ -5,7 +5,7 @@ import { setUser, loadSettings, saveSettings, loadBank, saveBank, loadTemplates,
 import { currentWeekIndex as currentWeekIndexNow, dateForDay, weekIndexForDate, weekIndexFromKey, weekKeyOf, weekLabel, weekNumberOf } from './weeks.js';
 import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge.js';
 import { createWeekSync } from './weekSync.js';
-import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, timerTitle } from './timer.js';
+import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, startedLabel, timerTitle } from './timer.js';
 
 const APP_VERSION = '1.31.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
@@ -1899,21 +1899,27 @@ export default function ElasticPlanner() {
     return stopped.discarded ? `${name}: inget sparat` : `${name}: ${formatHours(stopped.hours)} sparat`;
   };
 
+  // Returns 'needsEndTime' when what runs was clearly left running: nothing starts until
+  // its end has been given (the control asks and then starts again).
   const handleTimerStart = async (what) => {
-    if (!authUser) return;
+    if (!authUser) return 'ok';
     setTimerBusy(true);
+    let outcome = 'ok';
     try {
       const type = categories[what.type] ? what.type : (categories.job ? 'job' : Object.keys(categories)[0]);
       const result = await startTimerTx(authUser.uid, { ...what, type, label: categories[type]?.label || '' });
-      flashToast(`▶ ${comboTitle(result.timer)}${result.stopped ? ` · ${stoppedText(result.stopped)}` : ''}`);
+      if (result.needsEndTime) outcome = 'needsEndTime';
+      else flashToast(`▶ ${comboTitle(result.timer)}${result.stopped ? ` · ${stoppedText(result.stopped)}` : ''}`);
     } catch (err) {
       console.error('Kunde inte starta tiden:', err);
       flashToast('Kunde inte starta tiden. Är du uppkopplad?');
     }
     setTimerBusy(false);
+    return outcome;
   };
 
-  // Returns 'needsEndTime' when the timer was clearly left running and the end must be given
+  // Returns 'needsEndTime' when the timer was clearly left running and the end must be given,
+  // 'tooEarly' when a given end lies before the start (nothing written, timer still running)
   const handleTimerStop = async (options = {}) => {
     if (!authUser) return 'ok';
     setTimerBusy(true);
@@ -1921,6 +1927,7 @@ export default function ElasticPlanner() {
     try {
       const result = await stopTimerTx(authUser.uid, options);
       if (result.needsEndTime) outcome = 'needsEndTime';
+      else if (result.tooEarly) outcome = 'tooEarly';
       else flashToast(result.stopped ? `■ ${stoppedText(result.stopped)}` : 'Ingen tid går');
     } catch (err) {
       console.error('Kunde inte stoppa tiden:', err);
@@ -5522,6 +5529,8 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
   const [newCategory, setNewCategory] = useState('job');
   const [askEnd, setAskEnd] = useState(false);
   const [endValue, setEndValue] = useState('');
+  const [endError, setEndError] = useState('');
+  const [pendingStart, setPendingStart] = useState(null); // what to start once the forgotten timer has its end
   const anchorRef = useRef(null);
   const [popoverLeft, setPopoverLeft] = useState(0);
 
@@ -5538,30 +5547,44 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
   const pad = (n) => String(n).padStart(2, '0');
   const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-  const close = () => { setOpen(false); setAskEnd(false); };
+  const close = () => { setOpen(false); setAskEnd(false); setEndError(''); setPendingStart(null); };
+
+  // Left running by mistake: ask when the work really ended instead of saving a day-long block
+  const askForEnd = () => {
+    setEndValue(toLocalInput(new Date(new Date(timer.startedAt).getTime() + 60 * 60 * 1000)));
+    setEndError('');
+    setAskEnd(true);
+    openPopover();
+  };
 
   const start = async (what) => {
     close();
     setNewText('');
-    await onStart(what);
+    const outcome = await onStart(what);
+    if (outcome === 'needsEndTime') {
+      setPendingStart(what);
+      askForEnd();
+    }
   };
 
   const stop = async (options = {}) => {
     const outcome = await onStop(options);
     if (outcome === 'needsEndTime') {
-      // Left running by mistake: ask when the work really ended instead of saving a day-long block
-      setEndValue(toLocalInput(new Date(new Date(timer.startedAt).getTime() + 60 * 60 * 1000)));
-      setAskEnd(true);
-      openPopover();
+      askForEnd();
+    } else if (outcome === 'tooEarly') {
+      setEndError(`Den tiden ligger före starten (${startedLabel(timer.startedAt)}). Inget har sparats, tiden går fortfarande.`);
     } else {
+      const next = pendingStart;
       close();
+      if (next) await onStart(next);
     }
   };
 
   const startTyped = () => {
-    const typed = parseNewEntry(newText);
+    const typed = parseNewEntry(newText, categoryList);
     if (!typed.projectName) return;
-    start({ type: categories[newCategory] ? newCategory : categoryList[0]?.id, ...typed });
+    const type = typed.type || (categories[newCategory] ? newCategory : categoryList[0]?.id);
+    start({ ...typed, type });
   };
 
   return (
@@ -5612,16 +5635,19 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
               <div>
                 <div className="text-xs font-bold text-zinc-700 mb-1">När slutade du?</div>
                 <p className="text-[11px] text-zinc-500 mb-2">
-                  {comboTitle(timer)} har gått i {Math.round(minutes / 60)} timmar och glömdes troligen på. Ange när du faktiskt slutade.
+                  {comboTitle(timer)} startade {startedLabel(timer.startedAt)} och har gått i {Math.round(minutes / 60)} timmar.
+                  Den glömdes troligen på. Ange när du faktiskt slutade, så sparas tiden fram till dess.
+                  {pendingStart && <> Sedan startar {comboTitle(pendingStart)}.</>}
                 </p>
                 <input
                   type="datetime-local"
                   value={endValue}
                   min={toLocalInput(new Date(timer.startedAt))}
                   max={toLocalInput(new Date())}
-                  onChange={(e) => setEndValue(e.target.value)}
-                  className="w-full border border-zinc-300 rounded-md px-2 py-1.5 text-sm mb-2"
+                  onChange={(e) => { setEndValue(e.target.value); setEndError(''); }}
+                  className={`w-full border rounded-md px-2 py-1.5 text-sm mb-2 ${endError ? 'border-rose-400' : 'border-zinc-300'}`}
                 />
+                {endError && <p className="text-[11px] text-rose-600 mb-2">{endError}</p>}
                 <div className="flex gap-2">
                   <button
                     onClick={() => endValue && stop({ endedAt: new Date(endValue).toISOString() })}
@@ -5670,7 +5696,7 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
                     value={newText}
                     onChange={(e) => setNewText(e.target.value)}
                     onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') startTyped(); if (e.key === 'Escape') close(); }}
-                    placeholder="Nytt: Projekt / Uppgift"
+                    placeholder="Nytt: Projekt / Uppgift (eller Bok / Projekt / Uppgift)"
                     className="flex-1 min-w-0 border border-zinc-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-zinc-900"
                   />
                   <select
@@ -5685,7 +5711,7 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
                   </select>
                   <button
                     onClick={startTyped}
-                    disabled={!parseNewEntry(newText).projectName}
+                    disabled={!parseNewEntry(newText, categoryList).projectName}
                     className="px-2 py-1 bg-zinc-900 text-white text-xs font-bold rounded-md disabled:opacity-30"
                     aria-label="Starta tid på det nya"
                   >

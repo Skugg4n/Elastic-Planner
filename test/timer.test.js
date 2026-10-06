@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   segmentsForInterval, applySegments, newTimerDoc, isForgotten, elapsedMinutes,
-  formatClock, formatHours, comboTitle, timerTitle, parseNewEntry, recentCombos,
+  formatClock, formatHours, comboTitle, timerTitle, parseNewEntry, recentCombos, resolveEnd, startedLabel,
 } from '../src/timer.js';
 
 const at = (iso) => new Date(iso); // +02:00 (summer) / +01:00 (winter) = Stockholm wall clock
@@ -94,4 +94,31 @@ test('timer title leads with the category and drops a task that repeats the proj
   assert.equal(timerTitle({ label: 'Bok', projectName: 'Fotbollsboken', taskName: 'Inlaga' }), 'Bok / Fotbollsboken / Inlaga');
   assert.equal(timerTitle({ label: 'Jobb', projectName: 'Okonterat', taskName: '' }), 'Jobb / Okonterat');
   assert.equal(timerTitle({ label: '', projectName: 'Peab', taskName: 'Piktogram' }), 'Peab / Piktogram');
+});
+
+test('a chosen end before the start is refused instead of throwing the time away', () => {
+  const timer = { running: true, startedAt: '2026-10-05T14:32:07.000Z' };
+  const now = at('2026-10-06T07:04:00Z');
+  assert.deepEqual(resolveEnd(timer, null, now), { end: now }, 'no end given = now');
+  assert.deepEqual(resolveEnd(timer, '2026-10-05T14:00:00Z', now), { tooEarly: true }, 'before the start');
+  assert.deepEqual(resolveEnd(timer, '2026-10-05T14:35:00Z', now), { tooEarly: true }, 'under five minutes');
+  assert.deepEqual(resolveEnd(timer, 'not a date', now), { tooEarly: true });
+  assert.deepEqual(resolveEnd(timer, '2026-10-05T16:00:00Z', now), { end: at('2026-10-05T16:00:00Z') });
+  assert.deepEqual(resolveEnd(timer, '2026-10-07T16:00:00Z', now), { end: now }, 'in the future = now');
+});
+
+test('typed text may carry the category first', () => {
+  const cats = [{ id: 'job', label: 'Jobb' }, { id: 'creative', label: 'Bok' }];
+  assert.deepEqual(parseNewEntry('Dalenum / Socme'), { projectName: 'Dalenum', taskName: 'Socme' });
+  assert.deepEqual(parseNewEntry('Bok/Marknadsföring/Ny undersida', cats), { type: 'creative', projectName: 'Marknadsföring', taskName: 'Ny undersida' });
+  assert.deepEqual(parseNewEntry('bok / Marknadsföring', cats), { type: 'creative', projectName: 'Marknadsföring', taskName: '' });
+  assert.deepEqual(parseNewEntry('Bok', cats), { projectName: 'Bok', taskName: '' }, 'a lone category name is a project name');
+  assert.deepEqual(parseNewEntry('A/B/C'), { projectName: 'A', taskName: 'B / C' });
+});
+
+test('startedLabel says i dag, igår or the date', () => {
+  const now = new Date(2026, 9, 6, 9, 4); // local
+  assert.equal(startedLabel(new Date(2026, 9, 6, 7, 30), now), 'i dag 07:30');
+  assert.equal(startedLabel(new Date(2026, 9, 5, 16, 32), now), 'igår 16:32');
+  assert.match(startedLabel(new Date(2026, 9, 2, 16, 32), now), /2 okt 16:32$/);
 });

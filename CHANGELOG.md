@@ -5,6 +5,15 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-10-06
+
+### Fixed
+- **Bortglömd tid kunde slängas tyst.** När en timer gått över tolv timmar och du angav en sluttid som låg före starten (lätt hänt när den startade igår), sparade appen inget och sa bara "inget sparat". Nu stannar rutan kvar, säger att tiden ligger före starten, visar när timern startade (till exempel "igår 16:32") och låter tiden gå vidare tills du angett rätt.
+- **Byt eller Starta på en bortglömd timer** slängde den gamla tiden utan att fråga. Nu frågar appen först när den gamla slutade, sparar den, och startar sedan det nya.
+
+### Added
+- Du kan skriva kategorin först när du startar något nytt: `Bok / Marknadsföring / Ny undersida`. Då behövs inte kategorivalet.
+
 ## [1.31.0] - 2026-10-02
 
 ### Added

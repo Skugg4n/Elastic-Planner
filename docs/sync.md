@@ -27,6 +27,10 @@ Den pågående tidtagningen ligger i `planner/{uid}/state/timer` och delas mella
 Elastic Tid (`~/raycast-extensions/elastic-tid`, via nexus `planner-api.js`). Appen lyssnar på dokumentet
 (`subscribeTimer`) och startar/stoppar med transaktioner (`startTimerTx`, `stopTimerTx` i `plannerDB.js`) som
 skriver blocket direkt i veckodokumentet. Synken hämtar sedan in blocket som vilken molnändring som helst.
+En angiven sluttid som ligger före starten (eller under fem minuter efter) ger `tooEarly` utan att något
+skrivs eller stoppas; en bortglömd timer (över tolv timmar) ger `needsEndTime` både vid stopp och vid start,
+ingen tid slängs utan att användaren valt det.
+
 Reglerna (5 minuter, halvtimmar, förlängning, 12 timmar, Okonterat) finns i `src/timer.js` och MÅSTE vara
 desamma som i nexus `firebase/functions/planner-timer.js`.
 
