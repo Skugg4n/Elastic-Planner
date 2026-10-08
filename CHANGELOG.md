@@ -5,6 +5,11 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-10-08
+
+### Added
+- **"Stoppad 16:40, datorn stod stilla"** i sidhuvudet när Raycast-menyraden stoppat tiden för att datorn stått orörd i 20 minuter (Elastic Tid 0.2.0). Visas i fyra timmar med knappen Fortsätt.
+
 ## [1.33.0] - 2026-10-08
 
 ### Fixed

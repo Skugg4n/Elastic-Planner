@@ -7,7 +7,7 @@ import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge
 import { createWeekSync } from './weekSync.js';
 import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, startedLabel, timerTitle } from './timer.js';
 
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.34.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -5544,6 +5544,10 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
 
   const running = timer && timer.running;
   const minutes = running ? elapsedMinutes(timer.startedAt, new Date(now)) : 0;
+  // Stopped by the menu bar because the Mac stood still: say so for a few hours, with a way to continue
+  const idleStop = !running && timer?.lastStop?.reason === 'idle' && now - new Date(timer.lastStop.at).getTime() < 4 * 3600000
+    ? timer.lastStop : null;
+  const clockOf = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const categoryList = Object.values(categories);
   const pad = (n) => String(n).padStart(2, '0');
   const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -5625,14 +5629,32 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => (open ? close() : openPopover())}
-          disabled={busy}
-          className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors disabled:opacity-50"
-          aria-label="Starta tid"
-        >
-          <Play size={11} fill="currentColor" /> Starta tid
-        </button>
+        <div className="flex items-center gap-1.5">
+          {idleStop && (
+            <div
+              className="flex items-center gap-1.5 pl-2.5 pr-1 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-900"
+              title={`${comboTitle(idleStop)} stoppades ${clockOf(idleStop.at)} eftersom datorn stod stilla. ${idleStop.discarded ? 'Inget sparat (under fem minuter).' : `${formatHours(idleStop.hours)} sparat fram till dess.`}`}
+            >
+              <span className="text-xs font-bold max-w-[14rem] truncate">{comboTitle(idleStop)} stoppad {clockOf(idleStop.at)}</span>
+              <span className="text-[11px] text-amber-700">datorn stod stilla</span>
+              <button
+                onClick={() => onStart({ type: idleStop.type, projectName: idleStop.projectName, taskName: idleStop.taskName })}
+                disabled={busy}
+                className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full bg-white border border-amber-200 hover:bg-amber-100 disabled:opacity-50"
+              >
+                <Play size={9} fill="currentColor" /> Fortsätt
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => (open ? close() : openPopover())}
+            disabled={busy}
+            className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 hover:text-zinc-900 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors disabled:opacity-50"
+            aria-label="Starta tid"
+          >
+            <Play size={11} fill="currentColor" /> Starta tid
+          </button>
+        </div>
       )}
 
       {open && (
