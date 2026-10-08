@@ -201,7 +201,8 @@ export function subscribeTimer(uid, onTimer) {
     (snap) => {
       if (snap.metadata.hasPendingWrites) return;
       const data = snap.exists() ? snap.data() : null;
-      onTimer(data && data.running ? { ...data, updatedAt: null } : { running: false });
+      // lastStop: what was stopped last and why ("idle" = the Mac stood still), so the header can say so
+      onTimer(data && data.running ? { ...data, updatedAt: null } : { running: false, lastStop: (data && data.lastStop) || null });
     },
     (err) => console.warn("Timer listener failed:", err)
   );
