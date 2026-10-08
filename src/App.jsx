@@ -7,7 +7,7 @@ import { fixDuplicateIds, isEmptyWeek, mergeWeek, weeksEqual } from './weekMerge
 import { createWeekSync } from './weekSync.js';
 import { comboTitle, elapsedMinutes, formatClock, formatHours, parseNewEntry, recentCombos, startedLabel, timerTitle } from './timer.js';
 
-const APP_VERSION = '1.32.0';
+const APP_VERSION = '1.33.0';
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7); // 07:00 - 24:00
 const LATE_HOURS = [0, 1, 2, 3, 4, 5, 6]; // 00:00 - 06:00 (overflow from previous day)
 const LATE_HOUR_HEIGHT = 1.5; // rem — compressed height for late-night hours
@@ -5530,6 +5530,7 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
   const [askEnd, setAskEnd] = useState(false);
   const [endValue, setEndValue] = useState('');
   const [endError, setEndError] = useState('');
+  const [endOther, setEndOther] = useState(false); // "annat klockslag" instead of the duration choices
   const [pendingStart, setPendingStart] = useState(null); // what to start once the forgotten timer has its end
   const anchorRef = useRef(null);
   const [popoverLeft, setPopoverLeft] = useState(0);
@@ -5551,10 +5552,20 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
 
   // Left running by mistake: ask when the work really ended instead of saving a day-long block
   const askForEnd = () => {
-    setEndValue(toLocalInput(new Date(new Date(timer.startedAt).getTime() + 60 * 60 * 1000)));
+    setEndValue('');
+    setEndOther(false);
     setEndError('');
     setAskEnd(true);
     openPopover();
+  };
+
+  // The one thing you know about a timer that was never stopped is roughly how long you worked
+  const HOW_LONG = [0.5, 1, 1.5, 2, 3, 4, 6, 8];
+  const endAfter = (hours) => new Date(new Date(timer.startedAt).getTime() + hours * 3600000);
+  const endClock = (hours) => {
+    const end = endAfter(hours);
+    const sameDay = end.toDateString() === new Date(timer.startedAt).toDateString();
+    return `${pad(end.getHours())}:${pad(end.getMinutes())}${sameDay ? '' : ' dagen efter'}`;
   };
 
   const start = async (what) => {
@@ -5633,33 +5644,52 @@ function TimerControl({ timer, now, categories, combos, busy, onStart, onStop })
           >
             {askEnd ? (
               <div>
-                <div className="text-xs font-bold text-zinc-700 mb-1">När slutade du?</div>
+                <div className="text-xs font-bold text-zinc-700 mb-1">Hur länge höll du på?</div>
                 <p className="text-[11px] text-zinc-500 mb-2">
-                  {comboTitle(timer)} startade {startedLabel(timer.startedAt)} och har gått i {Math.round(minutes / 60)} timmar.
-                  Den glömdes troligen på. Ange när du faktiskt slutade, så sparas tiden fram till dess.
+                  {comboTitle(timer)} startade {startedLabel(timer.startedAt)} och stoppades aldrig.
+                  Välj hur länge du jobbade, så sparas tiden fram till dess.
                   {pendingStart && <> Sedan startar {comboTitle(pendingStart)}.</>}
                 </p>
-                <input
-                  type="datetime-local"
-                  value={endValue}
-                  min={toLocalInput(new Date(timer.startedAt))}
-                  max={toLocalInput(new Date())}
-                  onChange={(e) => { setEndValue(e.target.value); setEndError(''); }}
-                  className={`w-full border rounded-md px-2 py-1.5 text-sm mb-2 ${endError ? 'border-rose-400' : 'border-zinc-300'}`}
-                />
+                {!endOther ? (
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    {HOW_LONG.map((hours) => (
+                      <button
+                        key={hours}
+                        onClick={() => stop({ endedAt: endAfter(hours).toISOString() })}
+                        disabled={busy}
+                        title={`till ${endClock(hours)}`}
+                        className="px-2 py-1.5 rounded-md border border-zinc-300 hover:bg-zinc-100 text-xs font-bold text-zinc-800 disabled:opacity-50"
+                      >
+                        {formatHours(hours)}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 mb-2">
+                    <input
+                      type="datetime-local"
+                      value={endValue}
+                      min={toLocalInput(new Date(timer.startedAt))}
+                      max={toLocalInput(new Date())}
+                      onChange={(e) => { setEndValue(e.target.value); setEndError(''); }}
+                      className={`flex-1 min-w-0 border rounded-md px-2 py-1.5 text-sm ${endError ? 'border-rose-400' : 'border-zinc-300'}`}
+                    />
+                    <button
+                      onClick={() => endValue && stop({ endedAt: new Date(endValue).toISOString() })}
+                      disabled={!endValue || busy}
+                      className="px-3 py-1.5 bg-zinc-900 hover:bg-black text-white text-xs font-bold rounded-lg disabled:opacity-30"
+                    >
+                      Spara
+                    </button>
+                  </div>
+                )}
                 {endError && <p className="text-[11px] text-rose-600 mb-2">{endError}</p>}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => endValue && stop({ endedAt: new Date(endValue).toISOString() })}
-                    className="flex-1 px-3 py-1.5 bg-zinc-900 hover:bg-black text-white text-xs font-bold rounded-lg"
-                  >
-                    Spara med den sluttiden
+                <div className="flex gap-2 text-[11px]">
+                  <button onClick={() => setEndOther((v) => !v)} className="text-zinc-500 hover:text-zinc-900">
+                    {endOther ? 'Välj antal timmar i stället' : 'Till ett klockslag i stället'}
                   </button>
-                  <button
-                    onClick={() => stop({ discard: true })}
-                    className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-lg"
-                  >
-                    Släng
+                  <button onClick={() => stop({ discard: true })} className="ml-auto text-zinc-400 hover:text-rose-600">
+                    Släng utan att spara
                   </button>
                 </div>
               </div>

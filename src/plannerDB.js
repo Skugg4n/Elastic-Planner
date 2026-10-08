@@ -193,8 +193,11 @@ const timerRef = (uid) => doc(db, "planner", uid, "state", "timer");
 /** Live timer state. Calls back with the timer document, or { running: false }. */
 export function subscribeTimer(uid, onTimer) {
   if (!uid) return () => {};
+  // Metadata changes included: a write from this very tab first arrives as "pending" (skipped)
+  // and without them the acknowledged snapshot never comes, leaving the header stale.
   return onSnapshot(
     timerRef(uid),
+    { includeMetadataChanges: true },
     (snap) => {
       if (snap.metadata.hasPendingWrites) return;
       const data = snap.exists() ? snap.data() : null;

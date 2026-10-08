@@ -5,6 +5,14 @@ All notable changes to Elastic Planner will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-10-08
+
+### Fixed
+- Tidurslyssnaren i appen fick ingen signal om timern ändrades från samma flik (skrivningen hoppades över som "väntande" och den bekräftade kom aldrig). Nu lyssnar den även på bekräftelsen.
+
+### Changed
+- **"Hur länge höll du på?"** En timer som aldrig stoppats frågar nu efter antal timmar (30 min till 8 h, en knapp per val) i stället för ett förifyllt klockslag som lästes som ett förslag och gav en timme sparad. Klockslag går fortfarande att välja, utan förifyllt värde.
+
 ## [1.32.0] - 2026-10-06
 
 ### Fixed
