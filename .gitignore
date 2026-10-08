@@ -7,3 +7,6 @@ pnpm-debug.log*
 dist
 .DS_Store
 .vscode
+
+# Firebase-emulatorernas loggar
+*-debug.log
